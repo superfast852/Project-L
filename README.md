@@ -37,8 +37,8 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [ ] Lidar Handling
 - [ ] Drive Communication
 - [X] Drive Handling
-- [ ] Voltage Monitoring
-- [ ] Ultrasonic Interface
+- [X] Voltage Monitoring
+- [X] Ultrasonic Interface
 - [ ] GPS Handling
 - [X] MPU-9250 Integration
 
@@ -78,3 +78,7 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 ## Links
 - [BreezySLAM](https://github.com/simondlevy/breezyslam)
 - [Parts List](https://docs.google.com/spreadsheets/d/1OO8v4pfx6eXCZQJqTUq6JUSEajtX1vfl/edit?usp=sharing&ouid=107364809967877055034&rtpof=true&sd=true)
+
+---
+## Notes:
+- Install RPiSim when pulling the lib. If `pip install gpiosimulator` fails, install manually.

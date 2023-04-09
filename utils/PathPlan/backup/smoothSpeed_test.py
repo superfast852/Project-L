@@ -1,17 +1,11 @@
 import pygame
-import pygame_gui
 from pygame import Surface, draw, sprite
-from controller import XboxController
+from utils.controller import XboxController
 from utils import smoothSpeed
+import pickle
 import math
-from ast import literal_eval
 
-# TODO: Add charging station, Add collision, Add A*, general fixes
-
-
-w, h = 1920, 930  # Map res
-speed = 5
-
+x, y = 1920, 942
 black = (0, 0, 0)
 white = (255, 255, 255)
 red = (255, 0, 0)
@@ -21,38 +15,25 @@ yellow = (255, 255, 0)
 cyan = (0, 255, 255)
 magenta = (255, 0, 255)
 
-marker_maker = 1
-edit_marker = 0
-red_positions = ((1676, 868, 0), (1676, 743, 0), (1676, 677, 0), (1676, 545, 0), (1676, 480, 0), (1676, 350, 0))
-blue_positions = ((241, 351, 180), (241, 479, 180), (241, 546, 180), (241, 675, 180), (241, 739, 180), (241, 869, 180))
-team = red
-position = 1
-
+marker_maker = 0
+edit_marker = 1
 try:
-    if team == blue:
-        folder = "blue"
-    else:
-        folder = "red"
-    with open(f"{folder}Paths/{team}{position}.txt", "r") as f:
-        data = literal_eval(f.read())
+    with open("parameters.pkl", "rb") as f:
+        data = pickle.load(f).values()
         print("Settings: ", data)
-        markers = data
+        markers, team, position = tuple(data)
         if edit_marker:
             marker_maker = 1
 except FileNotFoundError:
-    print("No file found")
-    if team == blue:
-        markers = [blue_positions[position] if position else (w//2, h//2, 0)]
-    else:
-        markers = [red_positions[position] if position else (w // 2, h // 2, 0)]
+    markers = [(960, 471, 90), (257, 358, 180), (257, 556, 270.0), (448, 561, 0), (708, 561, 0),
+               (589, 372, 115), (258, 359, 180), (257, 487, 180), (447, 664, 0)] \
+        if not marker_maker else [(x//2, y//2, 90)]
 
 
 class Robot(sprite.Sprite):
     def __init__(self, team, start_pos=0, size=(150, 136)):
         super().__init__()
-        if start_pos is None or start_pos > 5:
-            spawn = (w // 2, h // 2, 90)
-        elif team == red:
+        if team == red:
             spawn = red_positions[start_pos]
         elif team == blue:
             spawn = blue_positions[start_pos]
@@ -77,7 +58,7 @@ class Robot(sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = spawn[0] - (size[0] / 2), spawn[1] - (size[1] / 2)
         self.rot = 0
-        self.rotate(spawn[2])
+        self.rotate(90)
 
     def moveX(self, x):
         self.rect.x += x
@@ -117,65 +98,34 @@ class Robot(sprite.Sprite):
             rSpeed = self.rotateTo(target[2], speed + 1)
         return (botX, botY, botR), (xSpeed, ySpeed, rSpeed)
 
-    def rotateTo(self, angle, mod_speed=5):  # Rename to rotateTo
+    def rotateTo(self, angle, speed=5):
         # Calculate the shortest angle between the current and target angles
         angle_diff = ((angle - self.rot) + 180) % 360 - 180
         # Call the original smoothSpeed function with the shortest angle as the target
         if round(angle_diff) != 0:
-            rSpeed = smoothSpeed(0, angle_diff, speed_lim=mod_speed, min_speed=0.5)
+            rSpeed = smoothSpeed(0, angle_diff, speed_lim=speed, min_speed=0.5)
             self.rotate(rSpeed)
             return rSpeed
-
-    def update(self):
-        if self.rect.x < 0:
-            self.rect.x = 0
-        if self.rect.x+self.rect.size[0] > w:
-            self.rect.x = w - self.rect.size[0]
-
-        if self.rect.y < 0:
-            self.rect.y = 0
-        if self.rect.y + self.rect.size[1] > h:
-            self.rect.y = h-self.rect.size[1]
-
-    def collide(self, x, y):
-        """Make a function that correctly handles colliding with other sprites.
-        It'll only be called when a collision has been detected, and it will pass the point of collision."""
-
-
-class ChargingStation(sprite.Sprite):
-    def __init__(self, side, size=(150, 280)):
-        super().__init__()
-        self.size = [i // 1 for i in size]
-        self.image = Surface(self.size, pygame.SRCALPHA)
-        self.image.fill(side)
-        self.rect = self.image.get_rect()
-        if side == blue:
-            self.rect.x, self.rect.y = (375, 473)
-        elif side == red:
-            self.rect.x, self.rect.y = (1394, 469)
-        else:
-            self.rect.x, self.rect.y = (0, 0)
 
 
 def compare_pos(a, b, tol=1):
     if len(a) != len(b):
         return False
-    delta = [0,0,0]
     for i in range(len(a)):
         if i == 2:  # treat third value as angle
             angle_diff = abs((a[i] - b[i] + 360 / 2) % 360 - 360 / 2)
             if angle_diff > tol:
-                delta[2] = angle_diff
+                return False
         else:  # treat other values as linear distances
             if abs(a[i] - b[i]) > tol:
-                delta[i] = abs(a[i] - b[i])
-    print(delta)
-    return True if delta == [0, 0, 0] else False
+                return False
+    return True
 
 
 def follow_path(bot, points):
     global current_marker
     if current_marker < len(points):
+        print(points[current_marker], bot.rect.center + (bot.rot,))
         if compare_pos(bot.rect.center + (bot.rot,), points[current_marker]):
             current_marker += 1
         else:
@@ -203,49 +153,34 @@ def draw_marker_links():
         draw.line(screen, black, markers[i][:2], markers[i + 1][:2], 2)
 
 
-def handle_station_collision(bot, station, px=5):
-    if bot.rect.top >= station.rect.top - px and bot.rect.bottom <= station.rect.bottom + px:  # Bot fully inside station
-        if bot.rect.bottom > station.rect.bottom:
-            bot.rect.bottom = station.rect.bottom
-        elif bot.rect.top < station.rect.top:
-            bot.rect.top = station.rect.top
-
-    elif bot.rect.top < station.rect.top < bot.rect.bottom - px or bot.rect.top + px < station.rect.bottom < bot.rect.bottom: # Bot on sides
-        if not bot.rect.right - px > station.rect.left:
-            bot.rect.right = station.rect.left
-        elif not bot.rect.left + px < station.rect.right:
-            bot.rect.left = station.rect.right
-
-    elif bot.rect.right-px > station.rect.left and bot.rect.left < station.rect.right: # Bot on tops
-        if station.rect.bottom > bot.rect.bottom > station.rect.top - px:
-            bot.rect.bottom = station.rect.top
-        elif bot.rect.top < station.rect.bottom + px:
-            bot.rect.top = station.rect.bottom
+def get_click_angle(x, y, rx, ry, theta):
+    dx = x - rx
+    dy = y - ry
+    angle = math.degrees(math.atan2(dy, dx)) % 360
+    dtheta = angle - theta
+    if dtheta > 180:
+        dtheta -= 360
+    elif dtheta < -180:
+        dtheta += 360
+    return dtheta
 
 
 pygame.init()
-screen = pygame.display.set_mode((w, h))
+screen = pygame.display.set_mode((x, y))
 pygame.display.set_caption("Mecanum Drive Test")
 clock = pygame.time.Clock()
-bots = pygame.sprite.Group()
-stations = pygame.sprite.Group()
-blue_details = compare_pos((375, 473, 0), (525, 750, 0))
-red_details = compare_pos((1394, 469, 0), (1544, 753, 0))
-print(red_details, blue_details)
-
-ui = pygame_gui.UIManager((w, h))
-hello = pygame_gui.elements.UIButton(pygame.Rect(0, 0, 20, 20), "hi", manager=ui)
-
+sprite_list = pygame.sprite.Group()
 bg = pygame.image.load("field.png")
-red_charging = ChargingStation(red)
-blue_charging = ChargingStation(blue)
-stations.add(blue_charging)
-stations.add(red_charging)
 
 joysticks = XboxController()
 
-sim_bot = Robot(team, position)
-bots.add(sim_bot)
+red_positions = ((0, 0), (x, y), (x / 2, y / 2))
+blue_positions = ((0, 0), (x, y), (x / 2, y / 2))
+team = red
+position = 2
+
+sim_bot = Robot(team, 2)
+sprite_list.add(sim_bot)
 
 current_marker = 0
 done = False
@@ -257,23 +192,17 @@ latches = {"lClick": 0, "rClick": 0, "mClick": 0,
 
 while not done:
     # Event handling
-    time_delta = clock.tick(60) / 1000.0
     for event in pygame.event.get():
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE):
             done = True
-        if event.type == pygame_gui.UI_BUTTON_PRESSED:
-            if event.ui_element == hello:
-                print(f"Current markers list: {markers}")
-        ui.process_events(event)
     screen.blit(bg, (0, 0))  # Draw background
-    ui.update(time_delta)
+
     # Input handling
     mouse_in = pygame.mouse.get_pressed(3)
     joy_in = joysticks.read()
 
+
     # Game logic
-
-
     if not autonomous:  # Manual Control
         if 1:  # Input latching management
             lClick, latches["lClick"] = joysticks.edge(mouse_in[0], latches["lClick"])
@@ -294,76 +223,59 @@ while not done:
             back, latches["back"] = joysticks.edge(joysticks.Back, latches["back"])
             start, latches["start"] = joysticks.edge(joysticks.Start, latches["start"])
 
-        sim_bot.moveX(joy_in[0] * joy_in[4] * speed)
-        sim_bot.moveY(-joy_in[1] * joy_in[4] * speed)
-        sim_bot.rotate(-joy_in[2] * speed//2)
+        sim_bot.moveX(joy_in[0] * joy_in[4] * 10)
+        sim_bot.moveY(joy_in[1] * joy_in[4] * 10)
+        sim_bot.rotate(joy_in[2] * 10)
 
         if joysticks.UD:
-            sim_bot.rotateTo(90)
+            sim_bot.rotateTo(270)
         elif joysticks.RD:
             sim_bot.rotateTo(0)
         elif joysticks.LD:
             sim_bot.rotateTo(180)
         elif joysticks.DD:
-            sim_bot.rotateTo(270)
+            sim_bot.rotateTo(90)
 
         if joy_in[7]:
             # noinspection PyTypeChecker
-            bots.remove(sim_bot)
+            sprite_list.remove(sim_bot)
             del sim_bot
             sim_bot = Robot(team, position)
             # noinspection PyTypeChecker
-            bots.add(sim_bot)
+            sprite_list.add(sim_bot)
 
         if joy_in[5]:
             autonomous = True
 
         draw_marker_links()
-        if marker_maker:
-            if latches['rClick'] and lClick:
+        if lClick:
+            if marker_maker:
                 mouse_pos = pygame.mouse.get_pos()
-                markers.append(mouse_pos + (0,))
-            if b:
-                markers.append(sim_bot.rect.center + (round(sim_bot.rot),))
-            if x:
-                markers = []
-                if team == "red":
-                    markers.append(red_positions[position])
-                else:
-                    markers.append(blue_positions[position])
-            if y:
-                markers.pop(-1)
+                markers.append(mouse_pos + (get_click_angle(mouse_pos[0], mouse_pos[1],
+                                                            markers[0][0], markers[0][1], markers[0][2]),))
+                print(markers)
+
     else:  # Autonomous
         if follow_path(sim_bot, markers):
             print("Path Complete")
             autonomous = False
-
-    #Station Collision
-    station_collision = pygame.sprite.groupcollide(bots, stations, False, False)
-    colliding_bots = list(station_collision.keys())
-    colliding_stations = list(station_collision.values())
-    try:
-        for i in range(len(colliding_bots)):
-            handle_station_collision(colliding_bots[i], colliding_stations[0][i])
-    except ValueError:
-        pass
-
-
     # Rendering
+
     draw_markers()
 
-    bots.update()
-    stations.update()
-    bots.draw(screen)
-    stations.draw(screen)
-    ui.draw_ui(screen)
+    sprite_list.update()
+    sprite_list.draw(screen)
     pygame.display.flip()
-    # clock.tick(60)
+    clock.tick(60)
 
-print("Captured markers: ", markers)
-if marker_maker:
-    with open(f"{team}{position}.txt", "w") as f:
-        data = str(markers)
-        print("Saving data: ", data)
-        f.write(data)
+with open("parameters.pkl", "wb") as f:
+    data = {"markers": markers, "team": team, "position": position}
+    print("Saving data: ", data)
+    pickle.dump(data, f)
 pygame.quit()
+# left: 145, 427
+# mid: 145, 618
+# right: 145, 819
+# size = 167
+# 0.3952 ipp
+# 2.53 ppi

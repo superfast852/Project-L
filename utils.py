@@ -22,3 +22,7 @@ def getAngle(x, y):
         angle += 360
     # Return the angle in degrees
     return int(angle)
+
+
+def inTolerance(a, b, tol=1):
+    return abs(a - b) <= tol

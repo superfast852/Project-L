@@ -1,7 +1,7 @@
 import pygame
 from pygame import Surface, draw, sprite
-from controller import XboxController
-from utils import smoothSpeed, getAngle
+from utils.controller import XboxController
+from utils import smoothSpeed
 import pickle
 import math
 

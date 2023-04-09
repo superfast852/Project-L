@@ -2,7 +2,7 @@ from interface import Drive
 from utils import getAngle
 if __name__ == "__main__":
     from controller import XboxController
-    drive = Drive(sim=True)
+    drive = Drive()
     joy = XboxController(0.15)
     states = {"RB": 0}
     while True:
