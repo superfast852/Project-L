@@ -1,7 +1,7 @@
 import pygame
 from pygame import Surface, draw, sprite
 from controller import XboxController
-from drive import smoothSpeed, getAngle
+from utils import smoothSpeed, getAngle
 import pickle
 import math
 
@@ -170,7 +170,7 @@ screen = pygame.display.set_mode((x, y))
 pygame.display.set_caption("Mecanum Drive Test")
 clock = pygame.time.Clock()
 sprite_list = pygame.sprite.Group()
-bg = pygame.image.load("../field.png")
+bg = pygame.image.load("field.png")
 
 joysticks = XboxController()
 

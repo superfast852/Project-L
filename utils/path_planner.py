@@ -2,7 +2,7 @@ import pygame
 import pygame_gui
 from pygame import Surface, draw, sprite
 from controller import XboxController
-from drive import smoothSpeed
+from utils import smoothSpeed
 import math
 from ast import literal_eval
 
@@ -236,7 +236,7 @@ print(red_details, blue_details)
 ui = pygame_gui.UIManager((w, h))
 hello = pygame_gui.elements.UIButton(pygame.Rect(0, 0, 20, 20), "hi", manager=ui)
 
-bg = pygame.image.load("../field.png")
+bg = pygame.image.load("field.png")
 red_charging = ChargingStation(red)
 blue_charging = ChargingStation(blue)
 stations.add(blue_charging)

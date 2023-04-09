@@ -11,15 +11,14 @@
 
 ---
 ## Introduction
-L is a robot designed to compete in the 2019 VEX Robotics Competition. It is a 4 wheel drive robot with a 4 bar lift and a 4 bar intake. It is capable of autonomous and driver control. It is also capable of autonomous scoring of the 20 point cube.
-
+Project L is a Custom General Purpose Robot designed with automation, expandability and speed in mind. It is based on a 4-wheel drive chassis with mecanum wheels. It is designed to be able to navigate and perform tasks autonomously, and to be interactive and easily expanded upon in software and hardware.
 ---
 ## Hardware
-L is built around a 4 wheel drive chassis with 4 mecanum wheels. It has a 4 bar lift and a 4 bar intake. It has a 4 motor drive train and a 4 motor lift. It has a 2 motor intake. It has a 2 motor shooter. It has a 2 motor indexer. It has a 2 motor conveyor. It has a 2 motor intake. It has a 2 motor lift. It has a 2 motor drive tr
+L is equipped with a 4-Wheel Mecanum Drive, as well as a LiDAR Sensor for navigation and a 6 DOF Robot Arm for manipulation.
 
 ---
 ## Software
-L is programmed in PROS. It has a 2 motor drive train. It has a 2 motor lift. It has a 2 motor intake. It has a 2 motor shooter. It has a 2 motor indexer. It has a 2 motor conveyor. It has a 2 motor intake. It has a 2 motor lift. It has a 2 motor drive tr
+L runs on an integrated computer (RasPI), and features a high level control interface
 
 ---
 ## TODO:
@@ -31,14 +30,20 @@ L is programmed in PROS. It has a 2 motor drive train. It has a 2 motor lift. It
 - [ ] Power Regulation and Distribution block: A block that takes in 12V and 
 outputs every power connection. Includes Battery voltage monitoring and cutoff. Uses an arduino to transmit data.
 
-####    Signals:
+####    Interfacing:
 - [ ] Encoder Handling
-- [ ] GPS Handling
+- [ ] Video Feed
+- [ ] Arm Control
 - [ ] Lidar Handling
-- [ ] MPU-9250 Integration
-- [ ] I2C Rail
+- [ ] Drive Communication
+- [X] Drive Handling
+- [ ] Voltage Monitoring
+- [ ] Ultrasonic Interface
+- [ ] GPS Handling
+- [X] MPU-9250 Integration
 
 ####    Software:
+- [ ] Networking (Network Tables?)
 - [ ] Sensor Interface
 - [ ] Proper Mapping
 - [ ] Autonomous
@@ -46,8 +51,7 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [ ] A* Path Finding and Following
 - [ ] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [ ] Robot Dashboard
-- [ ] Drive Integration
-- [ ] Arm Integration
+- [X] Drive Integration
 
 ####    Expansion:
 - [ ] Find out how to enable expansion
@@ -72,5 +76,5 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ---
 ## Links
-- [BreezySLAM]
+- [BreezySLAM](https://github.com/simondlevy/breezyslam)
 - [Parts List](https://docs.google.com/spreadsheets/d/1OO8v4pfx6eXCZQJqTUq6JUSEajtX1vfl/edit?usp=sharing&ouid=107364809967877055034&rtpof=true&sd=true)
