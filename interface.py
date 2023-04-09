@@ -15,7 +15,7 @@ io.setmode(io.BCM)
 io.setwarnings(False)
 
 
-class Drive:
+class Drive:  # TODO: Implement self.max properly
     def __init__(self, com='/dev/ttyACM0', baud=115200, mag=None, max_speed=1):
         self.lf = 0
         self.rf = 0
@@ -33,7 +33,7 @@ class Drive:
         self.encoders = [0] * 4
         self.pos = [0, 0, 0]
 
-    def cartesian(self, x, y, speed, turn):
+    def cartesian(self, x, y, speed=1, turn=0):
         theta = math.radians(getAngle(x, y))
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
@@ -62,7 +62,7 @@ class Drive:
 
         return lf, rf, lb, rb
 
-    def tank(self, x, power, turn=True):
+    def tank(self, x, power=1, turn=True):
         if power != 0:
             lf = lb = round((power + ((power / abs(power)) * min(0, x))), 3)
             rf = rb = round((power - ((power / abs(power)) * max(0, x))), 3)
@@ -77,7 +77,7 @@ class Drive:
         self.rb = rb
         return lf, rf, lb, rb
 
-    def moveTo(self, x, y, theta, speed, tolerance=0.1):
+    def moveTo(self, x, y, theta, speed=1, tolerance=0.1):
         while inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
                 or inTolerance(theta, self.pos[2], tolerance):
 
@@ -196,6 +196,9 @@ class Arm:
         raise NotImplementedError("Arm not implemented yet")
 
     def move(self, pose):
+        pass
+
+    def grab(self):
         pass
 
 
