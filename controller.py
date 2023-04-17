@@ -41,7 +41,7 @@ class XboxController(object):
 
         return [self._clean(i) for i in reads]
 
-    def _clean(self, x):
+    def _clean(self, x):  # Filter out the inputs.
         return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
 
     def _monitor_controller(self):

@@ -15,11 +15,10 @@ class Robot:
         self.arm = Arm()
         self.io = io
 
-    def pickUp(self, posA, posB):
-        self.drive.moveTo(posA[0], posA[1], 0)
+    def pickUp(self, a, b):
+        self.drive.moveTo(a[0], a[1], 0)
         self.arm.grab()
-        self.drive.moveTo(posB[0], posB[1], 0)
-
+        self.drive.moveTo(b[0], b[1], 0)
 
     def exit(self):
         self.drive.exit()

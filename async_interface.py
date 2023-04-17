@@ -78,7 +78,7 @@ class Drive:  # TODO: Implement self.max properly
         return lf, rf, lb, rb
 
     def moveTo(self, x, y, theta, speed=1, tolerance=0.1):
-        while inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
+        if inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
                 or inTolerance(theta, self.pos[2], tolerance):
 
             self.cartesian(smoothSpeed(self.pos[0], x),
@@ -153,9 +153,34 @@ class MPU:
 
 
 class Lidar:
-    def __init__(self):
-        raise NotImplementedError("Lidar not implemented yet")
+    def __init__(self, port='/dev/ttyUSB0', baudrate=115200, timeout=3, simOverride=False):
+        from rplidar import RPLidar
+        self.scan = [0]*360
+        self.active = 1
+        if not sim or simOverride:
+            self.lidar = RPLidar(port, baudrate, timeout)
+            print(self.lidar.get_info(), self.lidar.get_health())
+            print("Lidar connected.")
+            self.lidarThread = Thread(target=self._update)
+            self.lidarThread.start()
 
+    def _update(self):
+        for scan in self.lidar.iter_scans():
+            for _, angle, distance in scan:
+                self.scan[min(359, int(angle))] = distance
+            if not self.active:
+                break
+        self.lidar.stop()
+        self.lidar.stop_motor()
+        self.lidar.disconnect()
+        print("Lidar disconnected.")
+
+    def read(self):
+        return self.scan
+
+    def exit(self):
+        self.active = 0
+        self.lidarThread.join()
 
 class Ultrasonic:
     # TODO: Check if it works.
@@ -223,19 +248,15 @@ class Arm:
         self.move(self.home)
 
     def move(self, pose=None, timestep=0.1):
-        if pose is None:
-            pose = self.pose
-        biggest_change = pose.index(max([abs(pose[i] - self.pose[i]) for i in range(len(pose))]))
-        while self.pose[biggest_change] != pose[biggest_change]:
-            for i, angle in enumerate(pose):
-                try:
-                    step = smoothSpeed(self.pose[i], angle, 1, 0.1)
-                    self.arm[i].angle = int(step)
-                    time.sleep(timestep)
-                    self.pose[i] = int(step)
-                except IndexError:
-                    print(f"Servo {i} does not exist.")
-                    return None
+        # TODO: Add smoothSpeed
+        for i, angle in enumerate(pose):
+            try:
+                #step = smoothSpeed(self.pose[i], angle, 1, 0.1)
+                self.arm[i].angle = angle
+                self.pose[i] = angle
+            except IndexError:
+                print(f"Servo {i} does not exist.")
+                return None
 
 
 class Battery:
