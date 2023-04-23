@@ -5,14 +5,11 @@ from utils import getAngle, smoothSpeed, inTolerance
 
 try:
     import RPi.GPIO as io
+    io.setmode(io.BCM)
+    io.setwarnings(False)
 except ImportError:
-    from RPiSim import GPIO as io
-    io.IN = io.MODE_IN
-    io.OUT = io.MODE_OUT
     sim = True
 
-io.setmode(io.BCM)
-io.setwarnings(False)
 
 
 class Drive:  # TODO: Implement self.max properly
@@ -37,6 +34,35 @@ class Drive:  # TODO: Implement self.max properly
         theta = math.radians(getAngle(x, y))
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
+        lim = max(abs(sin), abs(cos))
+
+        lf = speed * cos / lim + turn
+        rf = speed * sin / lim - turn
+        lb = speed * sin / lim + turn
+        rb = speed * cos / lim - turn
+
+        if (speed + abs(turn)) > 1:
+            lf /= speed + abs(turn)
+            rf /= speed + abs(turn)
+            lb /= speed + abs(turn)
+            rb /= speed + abs(turn)
+
+        lf = float(str(round(lf, 3))[0:5])
+        rf = float(str(round(rf, 3))[0:5])
+        lb = float(str(round(lb, 3))[0:5])
+        rb = float(str(round(rb, 3))[0:5])
+
+        self.lf = lf
+        self.rf = rf
+        self.lb = lb
+        self.rb = rb
+
+        return lf, rf, lb, rb
+
+    def angle_cartesian(self, theta, speed=1, turn=0):
+        theta = math.radians(theta)
+        sin = math.sin(theta + math.pi / 4)
+        cos = math.cos(theta + math.pi / 4)
         lim = max(abs(sin), abs(cos))
 
         lf = speed * cos / lim + turn
@@ -193,8 +219,9 @@ class Ultrasonic:
 
 
 class Arm:
-    def __init__(self, num_servos=6):
+    def __init__(self, num_servos=6, smoothness=10):
         from adafruit_servokit import ServoKit
+        self.smoothness = smoothness
         self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
         self.pose = [0] * num_servos
         self.arm = [self.kit.servo[i] for i in range(num_servos)]
@@ -205,11 +232,11 @@ class Arm:
 
     def grab(self):
         self.pose[-1] = 0
-        self.move()
+        self.arm[-1].angle = 0
 
     def drop(self):
         self.pose[-1] = 180
-        self.move()
+        self.arm[-1].angle = 180
 
     def grab_item(self, period=0.5):
         self.move(self.grabbing)
@@ -222,20 +249,15 @@ class Arm:
         time.sleep(0.1)
         self.move(self.home)
 
-    def move(self, pose=None, timestep=0.1):
+    def move(self, pose=None):
         if pose is None:
             pose = self.pose
-        biggest_change = pose.index(max([abs(pose[i] - self.pose[i]) for i in range(len(pose))]))
-        while self.pose[biggest_change] != pose[biggest_change]:
-            for i, angle in enumerate(pose):
-                try:
-                    step = smoothSpeed(self.pose[i], angle, 1, 0.1)
-                    self.arm[i].angle = int(step)
-                    time.sleep(timestep)
-                    self.pose[i] = int(step)
-                except IndexError:
-                    print(f"Servo {i} does not exist.")
-                    return None
+        while self.pose != pose:
+            for i, joint in enumerate(self.arm):
+                position = int(smoothSpeed(self.pose[i], pose[i], 10, 1, self.smoothness))
+                self.pose[i] += position
+                joint.angle = self.pose[i]
+                time.sleep(0.005)
 
 
 class Battery:

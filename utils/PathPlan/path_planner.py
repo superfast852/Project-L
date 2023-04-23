@@ -1,7 +1,7 @@
 import pygame
 import pygame_gui
 from pygame import Surface, draw, sprite
-from utils.controller import XboxController
+from controller import XboxController
 from utils import smoothSpeed
 from ast import literal_eval
 

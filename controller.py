@@ -89,8 +89,7 @@ class XboxController(object):
                         self.LD = event.state == -1
                         self.RD = event.state == 1
             except:
-                print("Controller not found.")
-                self.found = False
+                raise Exception("Controller not found.")
 
     @staticmethod
     def edge(pulse, last, rising=True):
@@ -102,4 +101,4 @@ if __name__ == '__main__':
     joy = XboxController()
     while True:
         ins = joy.read()
-        print(ins)
+        #print(ins)
