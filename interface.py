@@ -59,35 +59,6 @@ class Drive:  # TODO: Implement self.max properly
 
         return lf, rf, lb, rb
 
-    def angle_cartesian(self, theta, speed=1, turn=0):
-        theta = math.radians(theta)
-        sin = math.sin(theta + math.pi / 4)
-        cos = math.cos(theta + math.pi / 4)
-        lim = max(abs(sin), abs(cos))
-
-        lf = speed * cos / lim + turn
-        rf = speed * sin / lim - turn
-        lb = speed * sin / lim + turn
-        rb = speed * cos / lim - turn
-
-        if (speed + abs(turn)) > 1:
-            lf /= speed + abs(turn)
-            rf /= speed + abs(turn)
-            lb /= speed + abs(turn)
-            rb /= speed + abs(turn)
-
-        lf = float(str(round(lf, 3))[0:5])
-        rf = float(str(round(rf, 3))[0:5])
-        lb = float(str(round(lb, 3))[0:5])
-        rb = float(str(round(rb, 3))[0:5])
-
-        self.lf = lf
-        self.rf = rf
-        self.lb = lb
-        self.rb = rb
-
-        return lf, rf, lb, rb
-
     def tank(self, x, power=1, turn=True):
         if power != 0:
             lf = lb = round((power + ((power / abs(power)) * min(0, x))), 3)
@@ -106,22 +77,17 @@ class Drive:  # TODO: Implement self.max properly
     def moveTo(self, x, y, theta, speed=1, tolerance=0.1):
         while inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
                 or inTolerance(theta, self.pos[2], tolerance):
-
+            # Turn calculation is broken. Also remember to later implement actual map path planning.
             self.cartesian(smoothSpeed(self.pos[0], x),
                            smoothSpeed(self.pos[1], y),
                            speed, smoothSpeed(self.pos[2], theta))
 
     def comms(self):
+        # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
         while self.mecanum != 2:
             self.board.write(f"{self.lf},{self.rf},{self.lb},{self.rb}".encode("utf-8"))
             time.sleep(0.1)
-            self.encoders = self.board.read(4)
-            self.calc_odometry()
-
-    def calc_odometry(self):
-        self.pos[0] += (self.encoders[0] + self.encoders[1] + self.encoders[2] + self.encoders[3]) * self.distance_per_tick / 4
-        self.pos[1] += (self.encoders[0] + self.encoders[1] - self.encoders[2] - self.encoders[3]) * self.distance_per_tick / 4
-        self.pos[2] = self.mag.getAngle() if self.mag else 0
+            self.pos = self.board.read(4)
 
     def drive(self, x, y, power, turn):
         if self.mecanum:

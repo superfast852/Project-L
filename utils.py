@@ -21,8 +21,25 @@ def getAngle(x, y):
     if angle < 0:
         angle += 360
     # Return the angle in degrees
-    return int(angle)
+    return round(angle)
 
 
 def inTolerance(a, b, tol=1):
     return abs(a - b) <= tol
+
+
+def getCoordinates(angle):
+    # Convert the angle from degrees to radians
+    angle = math.radians(angle)
+    # Calculate the x and y coordinates
+    x = round(math.cos(angle + math.pi/2), 3)
+    y = round(math.sin(angle + math.pi/2), 3)
+    # Return the coordinates as a tuple
+    return x, y
+
+
+if __name__ == "__main__":
+    angle = list(range(0, 361, 10))
+    for i in angle:
+        x, y = getCoordinates(i)
+        print(i, (x, y), getAngle(x, y))
