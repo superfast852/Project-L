@@ -12,7 +12,7 @@ y = [smoothSpeed(i, 0, 1, 0.1, 5) for i in x]
 ax.plot(x, y, label="smoothSpeed")
 plt.show()
 x = [i for i in range(0, 360)]
-y = [0]
+y = []
 for i in x:
     posX, posY = getCoordinates(i)
     y.append(drive.cartesian(posX, posY))
