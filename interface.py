@@ -30,8 +30,11 @@ class Drive:  # TODO: Implement self.max properly
         self.encoders = [0] * 4
         self.pos = [0, 0, 0]
 
-    def cartesian(self, x, y, speed=1, turn=0):
-        theta = math.radians(getAngle(x, y))
+    def cartesian(self, x, y, speed=1, turn=0, flooring=False):
+        if flooring:
+            theta = math.radians(int(getAngle(x, y)/10)*10)
+        else:
+            theta = math.radians(getAngle(x, y))
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
         lim = max(abs(sin), abs(cos))
@@ -75,6 +78,7 @@ class Drive:  # TODO: Implement self.max properly
         return lf, rf, lb, rb
 
     def moveTo(self, x, y, theta, speed=1, tolerance=0.1):
+        # TODO: Implement Async?
         while inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
                 or inTolerance(theta, self.pos[2], tolerance):
             # Turn calculation is broken. Also remember to later implement actual map path planning.
@@ -89,9 +93,9 @@ class Drive:  # TODO: Implement self.max properly
             time.sleep(0.1)
             self.pos = self.board.read(4)
 
-    def drive(self, x, y, power, turn):
+    def drive(self, x, y, power, turn, flooring=False):
         if self.mecanum:
-            return self.cartesian(x, y, power, turn)
+            return self.cartesian(x, y, power, turn, flooring)
         else:
             return self.tank(x, power, turn)
 

@@ -47,8 +47,9 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [ ] Sensor Interface
 - [ ] Proper Mapping
 - [ ] Autonomous
-- [X] Low Level -> High Level Interface
-- [ ] A* Path Finding and Following
+- [ ] Low Level -> High Level Interface
+- [ ] Given Path Following
+- [ ] A* Path Planning
 - [ ] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [ ] Robot Dashboard
 - [X] Drive Integration

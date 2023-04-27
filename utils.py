@@ -39,7 +39,17 @@ def getCoordinates(angle):
 
 
 if __name__ == "__main__":
+    from controller import XboxController
     angle = list(range(0, 361, 10))
     for i in angle:
         x, y = getCoordinates(i)
         print(i, (x, y), getAngle(x, y))
+
+    joy = XboxController(0.15)
+    states = {"RB": 0}
+    while True:
+        reads = joy.read()
+        edge, states["RB"] = joy.edge(joy.RB, states['RB'])
+        if edge:
+            break
+        print(reads[3], edge)

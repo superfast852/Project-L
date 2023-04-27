@@ -10,3 +10,5 @@ board~=1.0
 rplidar-roboticia~=0.9.5
 matplotlib~=3.7.1
 #adafruit-circuitpython-servokit~=1.3.13
+opencv-python~=4.7.0.72
+scikit-image~=0.20.0

@@ -20,6 +20,19 @@ class Robot:
         self.arm.grab()
         self.drive.moveTo(b[0], b[1], 0)
 
+    def autonomous(self):
+        self.drive.moveTo(0, 0, 0)
+        self.arm.grab()
+        self.drive.moveTo(0, 0, 0)
+
+    def teleop(self, joy):
+        reads = joy.read()
+        states = {"RB": 0}
+        switch_driving, states["RB"] = joy.edge(joy.RB, states['RB'])
+        if switch_driving:
+            self.drive.switchDrive()
+        self.drive.drive(reads[0], reads[1], reads[4], reads[2])
+
     def exit(self):
         self.drive.exit()
         self.mpu.exit()
