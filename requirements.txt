@@ -1,9 +1,9 @@
-pygame~=2.3.0
+pygame~=2.4.0
 pyserial~=3.5
 inputs~=0.5
 imusensor~=1.0.1
 smbus~=1.1
-numpy~=1.19
+numpy~=1.24.3
 easydict~=1.9
 adafruit-circuitpython-ina219~=3.4.21
 board~=1.0
@@ -12,3 +12,4 @@ matplotlib~=3.7.1
 pynetworktables~=2021.0.0
 opencv-python~=4.7.0.72
 scikit-image~=0.20.0
+# BreezySLAM

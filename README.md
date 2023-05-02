@@ -14,11 +14,13 @@
 Project L is a Custom General Purpose Robot designed with automation, expandability and speed in mind. It is based on a 4-wheel drive chassis with mecanum wheels. It is designed to be able to navigate and perform tasks autonomously, and to be interactive and easily expanded upon in software and hardware.
 ---
 ## Hardware
-L is equipped with a 4-Wheel Mecanum Drive, as well as a LiDAR Sensor for navigation and a 6 DOF Robot Arm for manipulation.
+L is equipped with a 4-Wheel Mecanum Drive, as well as a LiDAR Sensor for navigation and a 5 DOF Robot Arm for manipulation.
 
 ---
 ## Software
-L runs on an integrated computer (RasPI), and features a high level control interface
+L runs on an integrated computer (RasPI or Orin Nano), and features a high level control interface for the hardware as seen in the Robot class and the HAL (Hardware Abstraction Layer).
+It communicates using NetworkTables, which automatically gives it support for FRC Dashboards (Shuffleboard is preffered) and Libraries.
+The main files to run are main.py, which goes in the robot itself, and remote.py, which is the remote control and management app.
 
 ---
 ## TODO:
