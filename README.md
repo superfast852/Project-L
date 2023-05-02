@@ -34,32 +34,31 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [ ] Encoder Handling
 - [ ] Video Feed
 - [ ] Arm Control
-- [ ] Lidar Handling
+- [-] Lidar Handling
 - [ ] Drive Communication
 - [X] Drive Handling
 - [X] Voltage Monitoring
 - [X] Ultrasonic Interface
-- [ ] GPS Handling
 - [X] MPU-9250 Integration
 
 ####    Software:
-- [ ] Networking (Network Tables?)
+- [-] Networking (Network Tables!)
 - [ ] Sensor Interface
-- [ ] Proper Mapping
+- [-] Proper Mapping
 - [ ] Autonomous
-- [ ] Low Level -> High Level Interface
+- [ ] Low Level -> High Level Interface 
 - [ ] Given Path Following
-- [ ] A* Path Planning
-- [ ] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
-- [ ] Robot Dashboard
+- [ ] A*/RRT Path Planning
+- [-] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [X] Drive Integration
+- [-] HMI-Like Control Interface using Shuffleboard
 
 ####    Expansion:
 - [ ] Find out how to enable expansion
 
 ####    Comms:
 - [ ] Local Communication (Drive -> Pi <- PDB)
-- [ ] Remote Communication (Pi -> Driver Station)
+- [-] Remote Communication (Pi -> Dr- [ ] Robot Dashboardiver Station)
 - [ ] Long-Term Data Storage (Maps, Logs, etc.)
 
 ####    Base:
@@ -68,11 +67,11 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ---
 ## Goals
-- [ ] Automatic Navigation
+- [-] Automatic Navigation
 - [ ] Speed
-- [ ] A-B Navigation on prerecorded map
-- [ ] SLAM
-- [ ] Path Planning
+- [-] A-B Navigation on prerecorded map
+- [-] SLAM
+- [-] Path Planning
 - [ ] Task Creation Framework (Component Interface)
 
 ---

@@ -1,3 +1,7 @@
+import math
+from os import system
+
+import inputs
 from inputs import get_gamepad
 from threading import Thread
 
@@ -48,7 +52,6 @@ class XboxController(object):
         while True:
             try:
                 events = get_gamepad()
-                self.found = True
                 for event in events:
                     if event.code == 'ABS_Y':
                         self.LJoyY = self._clean(-(event.state / XboxController.MAX_JOY_VAL))  # normalize between -1 and 1
@@ -88,17 +91,66 @@ class XboxController(object):
                     elif event.code == 'ABS_HAT0X':
                         self.LD = event.state == -1
                         self.RD = event.state == 1
-            except:
-                raise Exception("Controller not found.")
-
+            except Exception as e:
+                pass
     @staticmethod
     def edge(pulse, last, rising=True):
         status = (pulse if rising else not pulse) and pulse != last
         return status, pulse
 
 
-if __name__ == '__main__':
-    joy = XboxController()
+def smoothSpeed(current, target, speed_lim=1, min_speed=0.1, smoothing_spread=10):
+    distance = current-target
+    try:
+        direction = -distance/abs(distance)
+        speed = min(9, (distance/10)**2/smoothing_spread)
+        output = (1+speed)*direction/10*speed_lim
+        return output if abs(output) > min_speed else min_speed*direction
+    except ZeroDivisionError:
+        return 0
+
+
+def getAngle(x, y):
+    # Calculate the angle in radians and rotate it counterclockwise by 90 degrees
+    # Angle grows counterclockwise
+    if x == 0 and y == 0:
+        return 0.0
+    angle = math.degrees(math.atan2(y, x) - math.pi / 2)
+    if angle < 0:
+        angle += 360
+    # Return the angle in degrees
+    return round(angle)
+
+
+def inTolerance(a, b, tol=1):
+    return abs(a - b) <= tol
+
+
+def getCoordinates(angle):
+    # Convert the angle from degrees to radians
+    angle = math.radians(angle)
+    # Calculate the x and y coordinates
+    x = round(math.cos(angle + math.pi/2), 3)
+    y = round(math.sin(angle + math.pi/2), 3)
+    # Return the coordinates as a tuple
+    return x, y
+
+
+def launchSmartDashboard(path="./shuffleboard.jar"):
+    system(f"java -jar {path} >/dev/null 2>&1 &")
+
+
+if __name__ == "__main__":
+    angle = list(range(0, 361, 10))
+    for i in angle:
+        x, y = getCoordinates(i)
+        print(i, (x, y), getAngle(x, y))
+
+    joy = XboxController(0.15)
+    states = {"RB": 0}
     while True:
-        ins = joy.read()
-        #print(ins)
+        reads = joy.read()
+        edge, states["RB"] = joy.edge(joy.RB, states['RB'])
+        if edge:
+            break
+        print(reads[3])

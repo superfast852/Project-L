@@ -1,11 +1,13 @@
+import math
+
 import cv2
 from matplotlib import pyplot as plt
 from skimage import morphology
 import numpy as np
 
-plt.rcParams["figure.figsize"] = [7.00, 3.50]
 plt.rcParams["figure.autolayout"] = True
-path = r'lmap2.png'
+fig, ax = plt.subplots(2, 2)
+path = r'lmap.jpeg'
 # Load the input image
 img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 # Convert to binary
@@ -23,25 +25,26 @@ def centerline(bin, type=int, return_dist=False):
         return cv2.threshold(norm_skel, 0.1, 1.0, cv2.THRESH_BINARY)[1].astype(type)
 
 
+def skeleton2line(map):
+    line = []
+    for n, i in enumerate(map):
+        for n2, j in enumerate(i):
+            if j:
+                line.append((n2, n))
+    return line
+
+
 skel, dist = centerline(img_bin, return_dist=True)
 smooth_dist = cv2.normalize(dist, None, 0, 1.0, cv2.NORM_MINMAX)
 overlay = img.copy()
 smooth_dist[skel == 1] = 1
-overlay[smooth_dist>0.1] = smooth_dist[smooth_dist > 0.1]*255
+overlay[smooth_dist > 0.1] = smooth_dist[smooth_dist > 0.1]*255
 
-#plt.imshow(img_bin, cmap="gray", interpolation="none")
-plt.imshow(overlay, cmap="magma", alpha=0.5)
+ax[0,0].imshow(overlay, cmap="magma", alpha=0.5)
+ax[0,1].imshow(smooth_dist, cmap="gray")
+coords = skeleton2line(skel)
+ax[1,0].scatter(*zip(*coords))
+ax[1,0].invert_yaxis()
+ax[1,1].imshow(skel)
 plt.show()
-plt.imshow(smooth_dist, cmap="gray")
-plt.show()
-"""
-plt.imshow(skel)
-plt.show()
-plt.imshow(dist, cmap="gray", interpolation="none")
-plt.show()
-overlay = img.copy()
-overlay[skel == 1] = 0
-plt.imshow(img, cmap="gray", interpolation="none")
-plt.imshow(overlay, alpha=0.5)
-plt.show()
-"""
+

@@ -1,8 +1,8 @@
 import pygame
 import pygame_gui
 from pygame import Surface, draw, sprite
-from controller import XboxController
-from utils import smoothSpeed
+from tools import XboxController
+from tools import smoothSpeed
 from ast import literal_eval
 
 # TODO: Add charging station, Add collision, Add A*, general fixes

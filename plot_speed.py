@@ -1,6 +1,6 @@
 from matplotlib import pyplot as plt
-from utils import smoothSpeed, getCoordinates
-from interface import Drive
+from tools import smoothSpeed, getCoordinates
+from HAL import Drive
 
 drive = Drive()
 
