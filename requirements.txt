@@ -12,4 +12,5 @@ matplotlib~=3.7.1
 pynetworktables~=2021.0.0
 opencv-python~=4.7.0.72
 scikit-image~=0.20.0
+rrtplanner
 # BreezySLAM

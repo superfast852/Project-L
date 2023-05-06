@@ -4,10 +4,11 @@ import math
 import time
 from threading import Thread
 from tools import getAngle, smoothSpeed, inTolerance
-from breezyslam.sensors import Laser
+from breezyslam.sensors import Laser, RPLidarA1
 from numpy.random import randn
 from serial import Serial
 from typing import Tuple
+from rplidar import RPLidar
 
 try:
     import RPi.GPIO as io
@@ -24,6 +25,7 @@ except ImportError:
 
 class Drive:  # TODO: Implement self.max properly
     def __init__(self, com='/dev/ttyACM0', baud=115200, mag=None, max_speed=1):
+        # IDEA: Use the MPU to get the velocities. Then, use Inverse Kinematics to get individual wheel speeds.
         self.lf = 0
         self.rf = 0
         self.lb = 0
@@ -31,14 +33,14 @@ class Drive:  # TODO: Implement self.max properly
         self.max = max_speed
         self.mag = mag
         self.mecanum = 1
-        self.distance_per_tick = 0.1427995  # in mm
+        self.geometry = {"radius": 0.5, "x-center distance": 0.5, "y-center distance": 0.5, "tpr": 1100,
+                         "dpt": 0.1427995, "w": 200, "h": 300}
         if not sim:
             import serial
-            self.board = serial.Serial(com, baud) if not sim else NotImplemented
+            self.board = serial.Serial(com, baud)
             self.comm_thread = Thread(target=self.comms)
             self.comm_thread.start()
-        self.encoders = [0] * 4
-        self.pos = [0, 0, 0]
+        self.positioner = Positioning()
 
     def cartesian(self, x, y, speed=1, turn=0, flooring=False):
         if flooring:
@@ -88,9 +90,8 @@ class Drive:  # TODO: Implement self.max properly
             # 1:
             #   l = 1+(1/1*0) = 1
             #   r = 1-(1/1*1) = 0
-            #
-            lf = lb = round((power + (power / abs(power) * min(0, x)))*turn, 3)
-            rf = rb = round((power - ((power / abs(power)) * max(0, x)))*-turn, 3)
+            lf = lb = round((power + (power / abs(power) * min(0, x))), 3)
+            rf = rb = round((power - ((power / abs(power)) * max(0, x))), 3)
         else:
             lf, rf, lb, rb = 0, 0, 0, 0
         self.lf = lf
@@ -99,21 +100,47 @@ class Drive:  # TODO: Implement self.max properly
         self.rb = rb
         return lf, rf, lb, rb
 
-    def moveTo(self, x, y, theta, speed=1, tolerance=0.1):
+    def smoothMove(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
         # TODO: Implement Async?
-        while inTolerance(x, self.pos[0], tolerance) or inTolerance(y, self.pos[1], tolerance)\
-                or inTolerance(theta, self.pos[2], tolerance):
+        waiting = 1
+        while (inTolerance(x, self.positioner.pose[0], tolerance) or inTolerance(y, self.positioner.pose[1], tolerance)\
+                or inTolerance(theta, self.positioner.pose[2], tolerance)) and waiting:
             # Turn calculation is broken. Also remember to later implement actual map path planning.
-            self.cartesian(smoothSpeed(self.pos[0], x),
-                           smoothSpeed(self.pos[1], y),
-                           speed, smoothSpeed(self.pos[2], theta))
+            self.cartesian(smoothSpeed(self.positioner.pose[0], x),
+                           smoothSpeed(self.positioner.pose[1], y),
+                           speed, smoothSpeed(self.positioner.pose[2], theta))
+            waiting = wait
+
+    def moveTo(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
+        # TODO: Implement Async?
+        xDir = 0
+        yDir = 0
+        turnDir = 0
+        waiting = 1
+        while waiting:
+            if not inTolerance(x, self.positioner.pose[0], tolerance):
+                if x-self.positioner.pose[0] > 0:
+                    xDir -= 1
+                else:
+                    xDir += 1
+            if not inTolerance(y, self.positioner.pose[1], tolerance):
+                if y-self.positioner.pose[1] > 0:
+                    yDir -= 1
+                else:
+                    yDir += 1
+            if not inTolerance(theta, self.positioner.pose[2], tolerance):
+                if theta-self.positioner.pose[2] > 0:
+                    turnDir -= 1
+                else:
+                    turnDir += 1
+            self.cartesian(xDir, yDir, speed, turnDir)
+            waiting = wait
 
     def comms(self):
         # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
         while self.mecanum != 2:
             self.board.write(f"{self.lf},{self.rf},{self.lb},{self.rb}".encode("utf-8"))
             time.sleep(0.1)
-            self.pos = self.board.read(4)
 
     def drive(self, x, y, power, turn, flooring=False):
         if self.mecanum:
@@ -126,6 +153,9 @@ class Drive:  # TODO: Implement self.max properly
 
     def brake(self):
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+
+    def IK(self, x, y, theta):
+        fl = (x - y - theta * ((self.geometry["x-center distance"]+self.geometry["y-center distance"])/2))
 
     def exit(self):
         self.mecanum = 2
@@ -444,3 +474,43 @@ def calc_lidar_data(packet):
     lidar_data = LidarData(start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i)
     return lidar_data
 
+
+class Positioning:
+    def __init__(self, starting=(0, 0, 0)):
+        self.pose = starting
+        self.encoders = None
+
+    def getPose(self):
+        return self.pose
+
+    def updatePose(self, encoders):
+        pass
+
+    def setPose(self, pose):
+        self.pose = pose
+
+    def updateEncoders(self, readings):
+        self.encoders = readings
+
+
+class RP_A1(RPLidarA1):
+    def __init__(self):
+        super().__init__()
+        self.lidar = RPLidar('/dev/ttyUSB0')
+        print(self.lidar.get_info(), self.lidar.get_health())
+        self.scanner = self.lidar.iter_scans()
+        next(self.scanner)
+        self.map = [0]*360
+
+    def read(self):
+        items = [item for item in next(self.scanner)]
+        angles = [item[1] for item in items]
+        distances = [item[2] for item in items]
+        for i in range(len(angles)):
+            self.map[angles[i]] = distances[i]
+        return angles, distances
+
+    def exit(self):
+        self.lidar.stop()
+        self.lidar.stop_motor()
+        self.lidar.disconnect()

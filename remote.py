@@ -1,10 +1,12 @@
-from tools import XboxController, launchSmartDashboard
+from extensions.tools import XboxController, launchSmartDashboard
 from networktables import NetworkTables
 
 NetworkTables.initialize(server="localhost")
+
 joyTable = NetworkTables.getTable("Joysticks")
 status = NetworkTables.getTable("Status")
 bot = NetworkTables.getTable("BotData")
+
 dash = NetworkTables.getTable("SmartDashboard")
 
 joy = XboxController()
@@ -24,6 +26,7 @@ def send2Dash(ins):
 
 
 while True:
+    # Edge Triggers
     exit_sig, exit_state = joy.edge(joy.Start, exit_state)
     mode_change, mode_state = joy.edge(joy.LB, mode_state)
     change_drive, drive_state = joy.edge(joy.RB, drive_state)
@@ -39,13 +42,16 @@ while True:
         mode = not mode
         status.putBoolean("mode", mode)
     if change_drive:
-        joyTable.putBoolean("driveMode", drive_mode)
+        status.putBoolean("driveMode", drive_mode)
 
     if mode:  # Manual
         pass
     else:  # Auto
         pass
 
+    speeds = bot.getNumberArray("speeds", [0, 0, 0, 0])
+    pose = bot.getNumberArray("pose", (0, 0, 0))
+    map = bot.getRaw("map", 0)
+
 print("Exiting...")
 NetworkTables.stopClient()
-

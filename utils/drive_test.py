@@ -1,7 +1,7 @@
-from HAL import Drive
-from tools import getAngle
+from extensions.HAL import Drive
+from extensions.tools import getAngle
 if __name__ == "__main__":
-    from tools import XboxController
+    from extensions.tools import XboxController
     drive = Drive()
     joy = XboxController(0.15)
     states = {"RB": 0}

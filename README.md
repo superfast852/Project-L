@@ -47,10 +47,10 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [-] Networking (Network Tables!)
 - [ ] Sensor Interface
 - [-] Proper Mapping
-- [ ] Autonomous
+- [-] Autonomous
 - [ ] Low Level -> High Level Interface 
 - [ ] Given Path Following
-- [ ] A*/RRT Path Planning
+- [-] A*/RRT Path Planning
 - [-] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [X] Drive Integration
 - [-] HMI-Like Control Interface using Shuffleboard

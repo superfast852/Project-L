@@ -136,7 +136,7 @@ def getCoordinates(angle):
     return x, y
 
 
-def launchSmartDashboard(path="./shuffleboard.jar"):
+def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
     system(f"java -jar {path} >/dev/null 2>&1 &")
 
 

@@ -1,7 +1,7 @@
 import pygame
 from pygame import Surface, draw, sprite
-from tools import XboxController
-from tools import smoothSpeed
+from extensions.tools import XboxController
+from extensions.tools import smoothSpeed
 import pickle
 import math
 
