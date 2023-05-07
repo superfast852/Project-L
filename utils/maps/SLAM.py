@@ -99,7 +99,7 @@ class SLAM:
         return map
 
 if __name__ == "__main__":
-    from extensions.HAL import LD06
+    from Robots.HAL import LD06
     from PathPlanner import Planner
 
     # Parameters

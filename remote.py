@@ -1,7 +1,7 @@
 from extensions.tools import XboxController, launchSmartDashboard
 from networktables import NetworkTables
 
-NetworkTables.initialize(server="localhost")
+NetworkTables.initialize(server="soji.local")
 
 joyTable = NetworkTables.getTable("Joysticks")
 status = NetworkTables.getTable("Status")
@@ -42,16 +42,13 @@ while True:
         mode = not mode
         status.putBoolean("mode", mode)
     if change_drive:
+        drive_mode = not drive_mode
         status.putBoolean("driveMode", drive_mode)
 
     if mode:  # Manual
         pass
     else:  # Auto
         pass
-
-    speeds = bot.getNumberArray("speeds", [0, 0, 0, 0])
-    pose = bot.getNumberArray("pose", (0, 0, 0))
-    map = bot.getRaw("map", 0)
 
 print("Exiting...")
 NetworkTables.stopClient()

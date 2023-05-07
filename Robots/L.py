@@ -1,4 +1,4 @@
-from extensions.HAL import *
+from Robots.HAL import *
 from networktables import NetworkTables
 
 # This is where we define our robot and its functionality. We instantiate each component and then
@@ -10,13 +10,14 @@ from networktables import NetworkTables
 
 
 class Robot:
+
     def __init__(self):
         NetworkTables.initialize()
         self.mpu = None  # MPU()
         self.drive = Drive()
         self.arm = Arm()
         self.io = io
-        self.lidar = RP_A1()# LD06()  #
+        self.lidar = RP_A1()  # LD06()
 
     def pickUp(self, a, b):
         self.drive.moveTo(a[0], a[1], 0)

@@ -3,7 +3,7 @@
 import math
 import time
 from threading import Thread
-from tools import getAngle, smoothSpeed, inTolerance
+from extensions.tools import getAngle, smoothSpeed, inTolerance
 from breezyslam.sensors import Laser, RPLidarA1
 from numpy.random import randn
 from serial import Serial
