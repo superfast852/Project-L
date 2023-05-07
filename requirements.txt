@@ -1,4 +1,4 @@
-pygame~=2.4.0
+#pygame~=2.4.0
 pyserial~=3.5
 inputs~=0.5
 imusensor~=1.0.1
@@ -13,4 +13,11 @@ pynetworktables~=2021.0.0
 opencv-python~=4.7.0.72
 scikit-image~=0.20.0
 rrtplanner~=0.1.2
+imageio>=2.4.1
+lazy_loader>=0.1
+networkx>=2.8
+PyWavelets>=1.1.1
+pillow>=9.0.1
+tifffile>=2019.7.26
+packaging>=20.0
 # BreezySLAM
