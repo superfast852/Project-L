@@ -5,7 +5,7 @@ from extensions.tools import getAngle, inTolerance, smoothSpeed
 import time
 from RPi import GPIO
 sim = 0
-
+GPIO.setmode(GPIO.BCM)
 
 class Drive:  # TODO: Implement self.max properly
     def __init__(self, mag=None, max_speed=1):
@@ -28,9 +28,9 @@ class Drive:  # TODO: Implement self.max properly
             self._r_pwm.start(0)
             print("PWM Started.")
             GPIO.setup(26, GPIO.OUT)
-            GPIO.setup(19, GPIO.OUT)
+            GPIO.setup(13, GPIO.OUT)
             GPIO.output(26, 0)
-            GPIO.output(19, 0)
+            GPIO.output(13, 0)
 
             self.left_dir = lambda x: GPIO.output(26, x)
             self.left_speed = lambda x: self._l_pwm.ChangeDutyCycle(x)

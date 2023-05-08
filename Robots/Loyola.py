@@ -1,5 +1,5 @@
 from networktables import NetworkTables
-from Loyola_HAL import Drive, RP_A1, GPIO
+from Robots.Loyola_HAL import Drive, RP_A1, GPIO
 
 class Robot:
 
