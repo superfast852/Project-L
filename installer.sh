@@ -1,6 +1,6 @@
 cd Packages/BreezySLAM
 python3 setup.py install --user
-cd ../rrtplanner
+cd ../rrt
 python3 setup.py install --user
 cd ../..
 sudo apt install python3-numpy python3-matplotlib python3-scipy python3-pip libopenblas-dev gfortran
