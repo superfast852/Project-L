@@ -6,37 +6,23 @@ from networktables import NetworkTables
 # For example, let's say our robot has an arm, mecanum drive train and camera. We can define a
 # function that goes to a position, picks up an item, and then drives to a different position.
 
-# TODO: Think about ideal ways to mix systems. Implement subsystems. Implement more functionality. NetworkTables.
+# TODO: Think about ideal ways to mix systems. Implement subsystems. Implement more functionality.
 
 
 class Robot:
 
     def __init__(self):
         NetworkTables.initialize()
-        self.mpu = None  # MPU()
-        self.drive = Drive()
-        self.arm = Arm()
-        self.io = io
         self.lidar = RP_A1()  # LD06()
+        self.drive = Drive(collision_fn=self.lidar.autoStopCollision, arg=10)
+        self.io = io
+        self.mpu = MPU()
+        self.arm = Arm()
 
     def pickUp(self, a, b):
         self.drive.moveTo(a[0], a[1], 0)
         self.arm.grab()
         self.drive.moveTo(b[0], b[1], 0)
-
-    def autonomous(self):
-        self.drive.moveTo(0, 0, 0)
-        self.arm.grab()
-        self.drive.moveTo(0, 0, 0)
-
-    def teleop(self, joy):
-        # Fix this. It won't work
-        reads = joy.read()
-        states = {"RB": 0}  # This. It gets reset every time teleop is called.
-        switch_driving, states["RB"] = joy.edge(joy.RB, states['RB'])
-        if switch_driving:
-            self.drive.switchDrive()
-        self.drive.drive(reads[0], reads[1], reads[4], reads[2])
 
     def test(self, drive=0, arm=0, mpu=0):
         if drive:
@@ -56,6 +42,6 @@ class Robot:
     def exit(self):
         NetworkTables.stopServer()
         self.drive.exit()
-        #self.mpu.exit()
-        io.cleanup()
+        self.io.cleanup()
+        self.mpu.exit()
         print("Robot exited.")

@@ -9,6 +9,8 @@ from numpy.random import randn
 from serial import Serial
 from typing import Tuple
 from rplidar import RPLidar
+from itertools import groupby
+from operator import itemgetter
 
 try:
     import RPi.GPIO as io
@@ -17,14 +19,16 @@ try:
     sim = False
 except ImportError:
     sim = True
+
     class io:
-        def cleanup(self):
+        @staticmethod
+        def cleanup():
             pass
     io = io()
 
 
 class Drive:  # TODO: Implement self.max properly
-    def __init__(self, com='/dev/ttyACM0', baud=115200, mag=None, max_speed=1):
+    def __init__(self, com='/dev/ttyACM0', baud=115200, mag=None, max_speed=1, collision_fn=lambda x: [(x, 1)], arg=None):
         # IDEA: Use the MPU to get the velocities. Then, use Inverse Kinematics to get individual wheel speeds.
         self.lf = 0
         self.rf = 0
@@ -35,10 +39,11 @@ class Drive:  # TODO: Implement self.max properly
         self.mecanum = 1
         self.geometry = {"radius": 0.5, "x-center distance": 0.5, "y-center distance": 0.5, "tpr": 1100,
                          "dpt": 0.1427995, "w": 200, "h": 300}
+        self.collision_fn = collision_fn
+        self.arg = arg
+        self.thread_life = 1
         if not sim:
-            import serial
-            self.board = serial.Serial(com, baud)
-            self.comm_thread = Thread(target=self.comms)
+            self.comm_thread = Thread(target=self.comms, args=(com, baud))
             self.comm_thread.start()
         self.positioner = Positioning()
 
@@ -47,6 +52,11 @@ class Drive:  # TODO: Implement self.max properly
             theta = math.radians(int(getAngle(x, y)/10)*10)
         else:
             theta = math.radians(getAngle(x, y))
+        if theta in list(zip(*self.collision_fn(self.arg)))[1]:
+            print("[WARNING] Drive: Would Collide!")
+            self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+            return 0, 0, 0, 0
+
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
         lim = max(abs(sin), abs(cos))
@@ -75,7 +85,8 @@ class Drive:  # TODO: Implement self.max properly
         return lf, rf, lb, rb
 
     def tank(self, x, power=1, turn=0):
-        # TODO: Add turn directly onto function
+        # TODO: Add turn directly onto function. Add Collision Detection.
+        # collisions = self.collision_fn(self.arg)
         if power != 0:
             # The turn operation is sus. It will override power
             # l = y+(y/abs(y)*min(0,x))
@@ -92,6 +103,9 @@ class Drive:  # TODO: Implement self.max properly
             #   r = 1-(1/1*1) = 0
             lf = lb = round((power + (power / abs(power) * min(0, x))), 3)
             rf = rb = round((power - ((power / abs(power)) * max(0, x))), 3)
+        elif turn != 0:
+            lf = lb = round(turn, 3)
+            rf = rb = round(-turn, 3)
         else:
             lf, rf, lb, rb = 0, 0, 0, 0
         self.lf = lf
@@ -101,7 +115,6 @@ class Drive:  # TODO: Implement self.max properly
         return lf, rf, lb, rb
 
     def smoothMove(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
-        # TODO: Implement Async?
         waiting = 1
         while (inTolerance(x, self.positioner.pose[0], tolerance) or inTolerance(y, self.positioner.pose[1], tolerance)\
                 or inTolerance(theta, self.positioner.pose[2], tolerance)) and waiting:
@@ -133,14 +146,18 @@ class Drive:  # TODO: Implement self.max properly
                     turnDir -= 1
                 else:
                     turnDir += 1
-            self.cartesian(xDir, yDir, speed, turnDir)
+            out = self.cartesian(xDir, yDir, speed, turnDir)
+            if (xDir == 0 and yDir == 0 and turnDir == 0) or out == (0, 0, 0, 0):
+                waiting = 0
             waiting = wait
 
-    def comms(self):
+    def comms(self, com, baud, update_freq=10):
         # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
-        while self.mecanum != 2:
+        import serial
+        self.board = serial.Serial(com, baud)
+        while self.thread_life:
             self.board.write(f"{self.lf},{self.rf},{self.lb},{self.rb}".encode("utf-8"))
-            time.sleep(0.1)
+            time.sleep(1/update_freq)
 
     def drive(self, x, y, power, turn, flooring=False):
         if self.mecanum:
@@ -158,10 +175,9 @@ class Drive:  # TODO: Implement self.max properly
         fl = (x - y - theta * ((self.geometry["x-center distance"]+self.geometry["y-center distance"])/2))
 
     def exit(self):
-        self.mecanum = 2
-        if not sim:
-            self.board.write(f"{0},{0},{0},{0}".encode("utf-8"))
-            self.board.close()
+        self.brake()
+        time.sleep(0.1)
+        self.thread_life = 0
 
 
 class MPU:
@@ -210,7 +226,7 @@ class LD06(Laser):
         if sim:
             from numpy.random import randn
         else:
-            self.loader, self.stop = _LD06(port)
+            self.loader, self.stop = self._LD06(port)
 
     def read(self, return_angle=0):
         if sim:
@@ -226,6 +242,151 @@ class LD06(Laser):
             return self.distances, self.angles
         else:
             return self.map
+
+    def _LD06(self, port: str = '/dev/ttyUSB0') -> Tuple[dict, callable]:
+        serial_port = Serial(port=port, baudrate=230400, timeout=5.0, bytesize=8, parity='N', stopbits=1)
+        # distances are angles (in degrees) mapped to distance values (in centimeters)
+        # last_packet_data is a LidarData instance containing the parsed data of the last packet
+        data = {
+            'distances': {},
+            'last_packet_data': None
+        }
+        data_channel = {'interrupt': False}
+
+        def update_data():
+            # in bytes (speed and start_angle + 13 measurements + end_angle and timestamp + crc_check)
+            packet_length = 4 + (3 * 12) + 4 + 1
+
+            while not data_channel['interrupt']:
+                last_byte_was_header = False
+                buffer = ""
+
+                # serial read loop
+                # reads until it sees the header and var_len bytes, then parses the packet and resets the buffer
+                while True:
+                    byte = serial_port.read()
+                    # convert byte to integer (big endian)
+                    byte_as_int = int.from_bytes(byte, 'big')
+
+                    # check for header byte
+                    if byte_as_int == 0x54:
+                        buffer += byte.hex()
+                        last_byte_was_header = True
+                        # read next byte
+                        continue
+
+                    # check for var_len byte (fixed value, comes after header byte)
+                    # if yes -> parse data, and update "data" variable
+                    if last_byte_was_header and byte_as_int == 0x2c:
+                        buffer += byte.hex()
+
+                        # if the packet length of the received packet doesn't have the expected length, something went wrong
+                        # -> drop packet and restart read loop
+                        if not len(buffer[0:-4]) == packet_length * 2:
+                            buffer = ""
+                            break
+
+                        lidar_data = self.calc_lidar_data(buffer[0:-4])
+
+                        # cleanup outdated values
+                        for angle in lidar_data.angle_i:
+                            start_angle, end_angle = lidar_data.start_angle, lidar_data.end_angle
+                            # remove angle only if it is in the range of the current data packet
+                            if angle in data['distances'] and (start_angle < angle < end_angle or (
+                                    end_angle > start_angle and (angle > start_angle or angle < end_angle))):
+                                del data['distances'][angle]
+
+                        # write new distance data to distances
+                        for i, angle in enumerate(lidar_data.angle_i):
+                            data['distances'][angle] = lidar_data.distance_i[i]
+
+                        # override last_packet_data
+                        data['last_packet_data'] = lidar_data
+
+                        # reset buffer
+                        buffer = ""
+                        break
+                    else:  # is not header or var_len -> write to buffer
+                        buffer += byte.hex()
+
+                    last_byte_was_header = False
+
+        # call update_data in a separate thread to make listen_to_lidar return and update_data still update the "data" var
+        read_thread = Thread(target=update_data)
+        read_thread.start()
+
+        def stop():
+            # send interrupt signal
+            data_channel['interrupt'] = True
+            # wait for thread to terminate
+            read_thread.join()
+            serial_port.close()
+
+        return data, stop
+
+    def calc_lidar_data(self, packet):
+        # packet is a string representing a received packet in hexadecimal (1 byte / 8 bits := 2 characters)
+
+        # retrieves nth byte of packet (as hexadecimal string; one character)
+        # n can be negative to get nth last byte
+        def get_byte(n: int) -> str:
+            if n == -1:
+                return packet[n * 2:]
+            return packet[n * 2:(n + 1) * 2]
+
+        # get infos from data packet (bytes are flipped for each value)
+        # speed in degrees per second
+        speed = int(get_byte(1) + get_byte(0), 16)
+        # start and end angle in hundreds of a degree
+        start_angle = float(int(get_byte(3) + get_byte(2), 16)) / 100  # degrees (after division)
+        end_angle = float(int(get_byte(-4) + get_byte(-5), 16)) / 100  # degrees (after division)
+        # timestamp in milliseconds (returns to 0 after 30000)
+        time_stamp = int(get_byte(-2) + get_byte(-3), 16)
+        crc_check = int(get_byte(-1), 16)
+
+        confidence_i = list()
+        angle_i = list()
+        distance_i = list()
+
+        # calculate the distance between (adjacent) measurements in degrees
+        # the total travel of the motor (in degrees) divided by the amount of measurements (fixed at 12)
+        if end_angle > start_angle:
+            angle_step = float(end_angle - start_angle) / 12
+        else:
+            angle_step = float((end_angle + 360) - start_angle) / 12
+
+        def circle(deg):
+            return deg - 360 if deg >= 360 else deg
+
+        # size of one measurement in bytes
+        measurement_packet_size = 3
+        # get data from each measurement (bytes are flipped for each value)
+        # measurement data starts at the 5th byte (index: 4)
+        for i in range(0, 12):
+            # measurement position in measurement data section of packet
+            measurement_position = measurement_packet_size * i
+            # distance in millimeters
+            distance_bytes = get_byte(5 + measurement_position) + get_byte(4 + measurement_position)
+            distance_i.append(int(distance_bytes, 16) / 10)  # centimeters (after division)
+            # intensity of signal (unitless)
+            confidence_i.append(int(get_byte(6 + measurement_position), 16))
+            # angle (position) of the measurement in degrees
+            angle_i.append(circle(start_angle + (angle_step * i)))
+
+        lidar_data = self.LidarData(start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i)
+        return lidar_data
+
+    class LidarData:
+        def __init__(self, start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i):
+            self.start_angle = start_angle
+            self.end_angle = end_angle
+            self.crc_check = crc_check
+            self.speed = speed
+            self.time_stamp = time_stamp
+
+            self.confidence_i = confidence_i
+            self.angle_i = angle_i
+            self.distance_i = distance_i
 
     def exit(self):
         self.map = None
@@ -324,157 +485,6 @@ class Battery:
         return self.ina.bus_voltage+self.ina.shunt_voltage, self.ina.current
 
 
-# IO Left: Arduino Comms (In Drive), Networking (Special Case)
-
-
-def _LD06(port: str = '/dev/ttyUSB0') -> Tuple[dict, callable]:
-    serial_port = Serial(port=port, baudrate=230400, timeout=5.0, bytesize=8, parity='N', stopbits=1)
-    # distances are angles (in degrees) mapped to distance values (in centimeters)
-    # last_packet_data is a LidarData instance containing the parsed data of the last packet
-    data = {
-        'distances': {},
-        'last_packet_data': None
-    }
-    data_channel = {'interrupt': False}
-
-    def update_data():
-        # in bytes (speed and start_angle + 13 measurements + end_angle and timestamp + crc_check)
-        packet_length = 4 + (3 * 12) + 4 + 1
-
-        while not data_channel['interrupt']:
-            last_byte_was_header = False
-            buffer = ""
-
-            # serial read loop
-            # reads until it sees the header and var_len bytes, then parses the packet and resets the buffer
-            while True:
-                byte = serial_port.read()
-                # convert byte to integer (big endian)
-                byte_as_int = int.from_bytes(byte, 'big')
-
-                # check for header byte
-                if byte_as_int == 0x54:
-                    buffer += byte.hex()
-                    last_byte_was_header = True
-                    # read next byte
-                    continue
-
-                # check for var_len byte (fixed value, comes after header byte)
-                # if yes -> parse data, and update "data" variable
-                if last_byte_was_header and byte_as_int == 0x2c:
-                    buffer += byte.hex()
-
-                    # if the packet length of the received packet doesn't have the expected length, something went wrong
-                    # -> drop packet and restart read loop
-                    if not len(buffer[0:-4]) == packet_length * 2:
-                        buffer = ""
-                        break
-
-                    lidar_data = calc_lidar_data(buffer[0:-4])
-
-                    # cleanup outdated values
-                    for angle in lidar_data.angle_i:
-                        start_angle, end_angle = lidar_data.start_angle, lidar_data.end_angle
-                        # remove angle only if it is in the range of the current data packet
-                        if angle in data['distances'] and (start_angle < angle < end_angle or (
-                                end_angle > start_angle and (angle > start_angle or angle < end_angle))):
-                            del data['distances'][angle]
-
-                    # write new distance data to distances
-                    for i, angle in enumerate(lidar_data.angle_i):
-                        data['distances'][angle] = lidar_data.distance_i[i]
-
-                    # override last_packet_data
-                    data['last_packet_data'] = lidar_data
-
-                    # reset buffer
-                    buffer = ""
-                    break
-                else:  # is not header or var_len -> write to buffer
-                    buffer += byte.hex()
-
-                last_byte_was_header = False
-
-    # call update_data in a separate thread to make listen_to_lidar return and update_data still update the "data" var
-    read_thread = Thread(target=update_data)
-    read_thread.start()
-
-    def stop():
-        # send interrupt signal
-        data_channel['interrupt'] = True
-        # wait for thread to terminate
-        read_thread.join()
-        serial_port.close()
-
-    return data, stop
-
-
-class LidarData:
-    def __init__(self, start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i):
-        self.start_angle = start_angle
-        self.end_angle = end_angle
-        self.crc_check = crc_check
-        self.speed = speed
-        self.time_stamp = time_stamp
-
-        self.confidence_i = confidence_i
-        self.angle_i = angle_i
-        self.distance_i = distance_i
-
-
-def calc_lidar_data(packet):
-    # packet is a string representing a received packet in hexadecimal (1 byte / 8 bits := 2 characters)
-
-    # retrieves nth byte of packet (as hexadecimal string; one character)
-    # n can be negative to get nth last byte
-    def get_byte(n: int) -> str:
-        if n == -1:
-            return packet[n * 2:]
-        return packet[n * 2:(n + 1) * 2]
-
-    # get infos from data packet (bytes are flipped for each value)
-    # speed in degrees per second
-    speed = int(get_byte(1) + get_byte(0), 16)
-    # start and end angle in hundreds of a degree
-    start_angle = float(int(get_byte(3) + get_byte(2), 16)) / 100  # degrees (after division)
-    end_angle = float(int(get_byte(-4) + get_byte(-5), 16)) / 100  # degrees (after division)
-    # timestamp in milliseconds (returns to 0 after 30000)
-    time_stamp = int(get_byte(-2) + get_byte(-3), 16)
-    crc_check = int(get_byte(-1), 16)
-
-    confidence_i = list()
-    angle_i = list()
-    distance_i = list()
-
-    # calculate the distance between (adjacent) measurements in degrees
-    # the total travel of the motor (in degrees) divided by the amount of measurements (fixed at 12)
-    if end_angle > start_angle:
-        angle_step = float(end_angle - start_angle) / 12
-    else:
-        angle_step = float((end_angle + 360) - start_angle) / 12
-
-    def circle(deg):
-        return deg - 360 if deg >= 360 else deg
-
-    # size of one measurement in bytes
-    measurement_packet_size = 3
-    # get data from each measurement (bytes are flipped for each value)
-    # measurement data starts at the 5th byte (index: 4)
-    for i in range(0, 12):
-        # measurement position in measurement data section of packet
-        measurement_position = measurement_packet_size * i
-        # distance in millimeters
-        distance_bytes = get_byte(5 + measurement_position) + get_byte(4 + measurement_position)
-        distance_i.append(int(distance_bytes, 16) / 10)  # centimeters (after division)
-        # intensity of signal (unitless)
-        confidence_i.append(int(get_byte(6 + measurement_position), 16))
-        # angle (position) of the measurement in degrees
-        angle_i.append(circle(start_angle + (angle_step * i)))
-
-    lidar_data = LidarData(start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i)
-    return lidar_data
-
-
 class Positioning:
     def __init__(self, starting=(0, 0, 0)):
         self.pose = starting
@@ -494,18 +504,20 @@ class Positioning:
 
 
 class RP_A1(RPLidarA1):
-    def __init__(self):
+    def __init__(self, com="/dev/ttyUSB0", baudrate=115200, timeout=3, rotation=0):
         super().__init__()
-        self.lidar = RPLidar('/dev/ttyUSB0')
+        self.lidar = RPLidar(com, baudrate, timeout)
         print(self.lidar.get_info(), self.lidar.get_health())
         self.scanner = self.lidar.iter_scans()
         next(self.scanner)
         self.map = [0]*360
+        self.rotation = rotation
 
     def read(self):
         items = [item for item in next(self.scanner)]
         angles = [item[1] for item in items]
         distances = [item[2] for item in items]
+        distances, angles = self.rotate_lidar_readings(zip(distances, angles), self.rotation)
         for i in range(len(angles)):
             self.map[angles[i]] = distances[i]
         return angles, distances
@@ -514,3 +526,70 @@ class RP_A1(RPLidarA1):
         self.lidar.stop()
         self.lidar.stop_motor()
         self.lidar.disconnect()
+
+    def autoStopCollision(self, collision_threshold):
+        return [(distance, i) for i, distance in enumerate(self.map) if 0 < i < collision_threshold]
+
+    def self_nav(self, collision_angles, collision_threshold, lMask=(180, 271), rMask=(270, 361)):
+        if min(self.map[collision_angles[0]:collision_angles[1]]) < collision_threshold:
+            ls_clear = []
+            rs_clear = []
+
+            for i, distance in enumerate(self.map[rMask[0]:rMask[1]]):  # Right Side Check
+                if distance > collision_threshold:  # If the vector_distance is greater than the threshold
+                    rs_clear.append(i + rMask[0])  # append the angle of the vector to the list of available angles
+
+            for i, distance in enumerate(self.map[lMask[0]:lMask[1]]):  # Left Side Check
+                if distance > collision_threshold:
+                    ls_clear.append(i + lMask[0])
+
+            # From the list, extract all numerical sequences (e.g. [3, 5, 1, 2, 3, 4, 5, 8, 3, 1] -> [[1, 2, 3, 4, 5]])
+            ls_sequences = self._extract_sequence(ls_clear)
+            rs_sequences = self._extract_sequence(rs_clear)
+
+            # Find the longest sequence, as there might be multiple sequences.
+            # If there were no sequences, the longest sequence would be 0.
+            ls_space = max(ls_sequences, key=len) if len(ls_sequences) > 0 else [0, 0]
+            rs_space = max(rs_sequences, key=len) if len(rs_sequences) > 0 else [0, 0]
+
+            if len(ls_space) > len(rs_space):  # If the left side has more space
+                return "Left", ls_space  # Return the direction and the angles of the obstacle for future optional odometry.
+            else:  # If the right side has more space
+                return "Right", rs_space  # Return the direction and the angles of the obstacle for future optional odometry.
+        else:
+            return "Forward", self.map[collision_angles[0]:collision_angles[1]]
+
+    @staticmethod
+    def _extract_sequence(array):
+        sequences = []
+        for k, g in groupby(enumerate(array), lambda x: x[0] - x[1]):
+            seq = list(map(itemgetter(1), g))
+            sequences.append(seq) if len(seq) > 1 else None
+        return sequences
+
+    @staticmethod
+    def rotate_lidar_readings(readings, rotation_angle):
+        """
+        Rotate lidar angle readings by the specified angle while keeping distances intact.
+
+        Args:
+            readings (list): List of tuples containing distances and angles.
+            rotation_angle (float): Angle (in degrees) by which to rotate the readings.
+
+        Returns:
+            list: Rotated lidar readings with preserved distances.
+        """
+        if rotation_angle % 360 == 0:
+            return readings
+        rotated_readings = []
+
+        for distance, angle in readings:
+            # Apply rotation to the angle
+            rotated_angle = angle + rotation_angle
+
+            # Normalize the angle to be within 0-360 degrees range
+            rotated_angle = (rotated_angle + 360) % 360
+
+            rotated_readings.append((distance, rotated_angle))
+
+        return rotated_readings

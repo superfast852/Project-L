@@ -1,7 +1,5 @@
 import math
 from os import system
-
-import inputs
 from inputs import get_gamepad
 from threading import Thread
 
@@ -141,11 +139,6 @@ def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
 
 
 if __name__ == "__main__":
-    angle = list(range(0, 361, 10))
-    for i in angle:
-        x, y = getCoordinates(i)
-        print(i, (x, y), getAngle(x, y))
-
     joy = XboxController(0.15)
     states = {"RB": 0}
     while True:

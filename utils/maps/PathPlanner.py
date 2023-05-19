@@ -47,7 +47,7 @@ if __name__ == "__main__":
     from LD06 import LD06
     from matplotlib.pyplot import imshow, show
     map = generate_random_map(300)
-    slam = SLAM(LD06(), map, 30, graph=1)
+    slam = SLAM(LD06(), map, 30, graph=0)
     map = slam.toPath()
     planner = Planner(map, 500)
     imshow(slam.MapToXY())
