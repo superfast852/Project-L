@@ -10,10 +10,10 @@
 
 ---
 ## Software
-- [ ] Test NavStack
-- [ ] Make MecanumDrive sendable to SmartDashboard
-- [ ] Revamp HAL
-- [ ] Add Odometry
+- [-] Test NavStack
+- [-] Make MecanumDrive sendable to SmartDashboard
+- [X] Revamp HAL
+- [-] Add Odometry
 - [ ] Add DriveSystem Comms
 - [ ] Test Arduino Comms
 - [ ] Make Serial Handler for Arduino and Lidar

@@ -4,10 +4,7 @@ import math
 import time
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, inTolerance
-from breezyslam.sensors import Laser, RPLidarA1
-from numpy.random import randn
-from serial import Serial
-from typing import Tuple
+from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar
 from itertools import groupby
 from operator import itemgetter
@@ -28,17 +25,14 @@ except ImportError:
 
 
 class Drive:  # TODO: Implement self.max properly
-    def __init__(self, com='/dev/ttyACM0', baud=115200, mag=None, max_speed=1, collision_fn=lambda x: [(x, 1)], arg=None):
+    def __init__(self, com='/dev/ttyACM0', baud=115200, max_speed=1, collision_fn=lambda x: [(x, "hi")], arg=None):
         # IDEA: Use the MPU to get the velocities. Then, use Inverse Kinematics to get individual wheel speeds.
         self.lf = 0
         self.rf = 0
         self.lb = 0
         self.rb = 0
         self.max = max_speed
-        self.mag = mag
         self.mecanum = 1
-        self.geometry = {"radius": 0.5, "x-center distance": 0.5, "y-center distance": 0.5, "tpr": 1100,
-                         "dpt": 0.1427995, "w": 200, "h": 300}
         self.collision_fn = collision_fn
         self.arg = arg
         self.thread_life = 1
@@ -49,12 +43,12 @@ class Drive:  # TODO: Implement self.max properly
 
     def cartesian(self, x, y, speed=1, turn=0, flooring=False):
         if flooring:
-            theta = math.radians(int(getAngle(x, y)/10)*10)
+            theta = math.radians(getAngle(x, y) % 10)
         else:
             theta = math.radians(getAngle(x, y))
         if theta in list(zip(*self.collision_fn(self.arg)))[1]:
             print("[WARNING] Drive: Would Collide!")
-            self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+            self.brake()
             return 0, 0, 0, 0
 
         sin = math.sin(theta+math.pi/4)
@@ -116,7 +110,7 @@ class Drive:  # TODO: Implement self.max properly
 
     def smoothMove(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
         waiting = 1
-        while (inTolerance(x, self.positioner.pose[0], tolerance) or inTolerance(y, self.positioner.pose[1], tolerance)\
+        while (inTolerance(x, self.positioner.pose[0], tolerance) or inTolerance(y, self.positioner.pose[1], tolerance)
                 or inTolerance(theta, self.positioner.pose[2], tolerance)) and waiting:
             # Turn calculation is broken. Also remember to later implement actual map path planning.
             self.cartesian(smoothSpeed(self.positioner.pose[0], x),
@@ -125,7 +119,6 @@ class Drive:  # TODO: Implement self.max properly
             waiting = wait
 
     def moveTo(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
-        # TODO: Implement Async?
         xDir = 0
         yDir = 0
         turnDir = 0
@@ -148,7 +141,7 @@ class Drive:  # TODO: Implement self.max properly
                     turnDir += 1
             out = self.cartesian(xDir, yDir, speed, turnDir)
             if (xDir == 0 and yDir == 0 and turnDir == 0) or out == (0, 0, 0, 0):
-                waiting = 0
+                break
             waiting = wait
 
     def comms(self, com, baud, update_freq=10):
@@ -170,9 +163,6 @@ class Drive:  # TODO: Implement self.max properly
 
     def brake(self):
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
-
-    def IK(self, x, y, theta):
-        fl = (x - y - theta * ((self.geometry["x-center distance"]+self.geometry["y-center distance"])/2))
 
     def exit(self):
         self.brake()
@@ -214,184 +204,6 @@ class MPU:
 
     def exit(self):
         self.mpu = NotImplemented
-
-
-class LD06(Laser):
-
-    def __init__(self, port="/dev/ttyUSB0"):
-        Laser.__init__(self, 360, 10, 360, 12000, 0, 0)
-        self.map = [0] * 360
-        self.angles = []
-        self.distances = []
-        if sim:
-            from numpy.random import randn
-        else:
-            self.loader, self.stop = self._LD06(port)
-
-    def read(self, return_angle=0):
-        if sim:
-            self.distances = randn(360)
-            self.angles = list(range(360))
-        else:
-            self.angles, self.distances = self.loader['distances'].items()
-
-        for angle, distance in zip(self.angles, self.distances):
-            self.map[angle] = distance
-
-        if return_angle:
-            return self.distances, self.angles
-        else:
-            return self.map
-
-    def _LD06(self, port: str = '/dev/ttyUSB0') -> Tuple[dict, callable]:
-        serial_port = Serial(port=port, baudrate=230400, timeout=5.0, bytesize=8, parity='N', stopbits=1)
-        # distances are angles (in degrees) mapped to distance values (in centimeters)
-        # last_packet_data is a LidarData instance containing the parsed data of the last packet
-        data = {
-            'distances': {},
-            'last_packet_data': None
-        }
-        data_channel = {'interrupt': False}
-
-        def update_data():
-            # in bytes (speed and start_angle + 13 measurements + end_angle and timestamp + crc_check)
-            packet_length = 4 + (3 * 12) + 4 + 1
-
-            while not data_channel['interrupt']:
-                last_byte_was_header = False
-                buffer = ""
-
-                # serial read loop
-                # reads until it sees the header and var_len bytes, then parses the packet and resets the buffer
-                while True:
-                    byte = serial_port.read()
-                    # convert byte to integer (big endian)
-                    byte_as_int = int.from_bytes(byte, 'big')
-
-                    # check for header byte
-                    if byte_as_int == 0x54:
-                        buffer += byte.hex()
-                        last_byte_was_header = True
-                        # read next byte
-                        continue
-
-                    # check for var_len byte (fixed value, comes after header byte)
-                    # if yes -> parse data, and update "data" variable
-                    if last_byte_was_header and byte_as_int == 0x2c:
-                        buffer += byte.hex()
-
-                        # if the packet length of the received packet doesn't have the expected length, something went wrong
-                        # -> drop packet and restart read loop
-                        if not len(buffer[0:-4]) == packet_length * 2:
-                            buffer = ""
-                            break
-
-                        lidar_data = self.calc_lidar_data(buffer[0:-4])
-
-                        # cleanup outdated values
-                        for angle in lidar_data.angle_i:
-                            start_angle, end_angle = lidar_data.start_angle, lidar_data.end_angle
-                            # remove angle only if it is in the range of the current data packet
-                            if angle in data['distances'] and (start_angle < angle < end_angle or (
-                                    end_angle > start_angle and (angle > start_angle or angle < end_angle))):
-                                del data['distances'][angle]
-
-                        # write new distance data to distances
-                        for i, angle in enumerate(lidar_data.angle_i):
-                            data['distances'][angle] = lidar_data.distance_i[i]
-
-                        # override last_packet_data
-                        data['last_packet_data'] = lidar_data
-
-                        # reset buffer
-                        buffer = ""
-                        break
-                    else:  # is not header or var_len -> write to buffer
-                        buffer += byte.hex()
-
-                    last_byte_was_header = False
-
-        # call update_data in a separate thread to make listen_to_lidar return and update_data still update the "data" var
-        read_thread = Thread(target=update_data)
-        read_thread.start()
-
-        def stop():
-            # send interrupt signal
-            data_channel['interrupt'] = True
-            # wait for thread to terminate
-            read_thread.join()
-            serial_port.close()
-
-        return data, stop
-
-    def calc_lidar_data(self, packet):
-        # packet is a string representing a received packet in hexadecimal (1 byte / 8 bits := 2 characters)
-
-        # retrieves nth byte of packet (as hexadecimal string; one character)
-        # n can be negative to get nth last byte
-        def get_byte(n: int) -> str:
-            if n == -1:
-                return packet[n * 2:]
-            return packet[n * 2:(n + 1) * 2]
-
-        # get infos from data packet (bytes are flipped for each value)
-        # speed in degrees per second
-        speed = int(get_byte(1) + get_byte(0), 16)
-        # start and end angle in hundreds of a degree
-        start_angle = float(int(get_byte(3) + get_byte(2), 16)) / 100  # degrees (after division)
-        end_angle = float(int(get_byte(-4) + get_byte(-5), 16)) / 100  # degrees (after division)
-        # timestamp in milliseconds (returns to 0 after 30000)
-        time_stamp = int(get_byte(-2) + get_byte(-3), 16)
-        crc_check = int(get_byte(-1), 16)
-
-        confidence_i = list()
-        angle_i = list()
-        distance_i = list()
-
-        # calculate the distance between (adjacent) measurements in degrees
-        # the total travel of the motor (in degrees) divided by the amount of measurements (fixed at 12)
-        if end_angle > start_angle:
-            angle_step = float(end_angle - start_angle) / 12
-        else:
-            angle_step = float((end_angle + 360) - start_angle) / 12
-
-        def circle(deg):
-            return deg - 360 if deg >= 360 else deg
-
-        # size of one measurement in bytes
-        measurement_packet_size = 3
-        # get data from each measurement (bytes are flipped for each value)
-        # measurement data starts at the 5th byte (index: 4)
-        for i in range(0, 12):
-            # measurement position in measurement data section of packet
-            measurement_position = measurement_packet_size * i
-            # distance in millimeters
-            distance_bytes = get_byte(5 + measurement_position) + get_byte(4 + measurement_position)
-            distance_i.append(int(distance_bytes, 16) / 10)  # centimeters (after division)
-            # intensity of signal (unitless)
-            confidence_i.append(int(get_byte(6 + measurement_position), 16))
-            # angle (position) of the measurement in degrees
-            angle_i.append(circle(start_angle + (angle_step * i)))
-
-        lidar_data = self.LidarData(start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i)
-        return lidar_data
-
-    class LidarData:
-        def __init__(self, start_angle, end_angle, crc_check, speed, time_stamp, confidence_i, angle_i, distance_i):
-            self.start_angle = start_angle
-            self.end_angle = end_angle
-            self.crc_check = crc_check
-            self.speed = speed
-            self.time_stamp = time_stamp
-
-            self.confidence_i = confidence_i
-            self.angle_i = angle_i
-            self.distance_i = distance_i
-
-    def exit(self):
-        self.map = None
-        if not sim:
-            self.stop()
 
 
 class Ultrasonic:
@@ -461,15 +273,17 @@ class Arm:
         time.sleep(0.1)
         self.move(self.home)
 
-    def move(self, pose=None):
+    def move(self, pose=None, wait=1):
         if pose is None:
             pose = self.pose
-        while self.pose != pose:
+        waiting = 1
+        while waiting and self.pose != pose:
             for i, joint in enumerate(self.arm):
                 position = int(smoothSpeed(self.pose[i], pose[i], 10, 1, self.smoothness))
                 self.pose[i] += position
                 joint.angle = self.pose[i]
                 time.sleep(0.005)
+            waiting = wait
 
 
 class Battery:
@@ -488,7 +302,9 @@ class Battery:
 class Positioning:
     def __init__(self, starting=(0, 0, 0)):
         self.pose = starting
-        self.encoders = None
+        self.encoders = [0]*4
+        self.geometry = {"radius": 0.5, "x-center distance": 0.5, "y-center distance": 0.5, "tpr": 1100,
+                         "dpt": 0.1427995, "w": 200, "h": 300}
 
     def getPose(self):
         return self.pose

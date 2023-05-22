@@ -54,7 +54,7 @@ class Map:
         self.__init__(map)
 
     def toSlam(self):
-        return [(not i)*255 for i in self.map.flatten()]
+        return bytearray([(not i)*255 for i in self.map.flatten()])
 
     def save(self, name=None):
         if name is None:
@@ -74,7 +74,7 @@ class Map:
         return random_point_og(self.map)
 
     def __len__(self):
-        return int(len(self.map) ** 0.5)
+        return len(self.map)
 
 
 class SLAM:
@@ -83,6 +83,7 @@ class SLAM:
         self.mapbytes = self.map.toSlam()
         self.ShouldUpdate = update_map
         self.map_size = len(self.map)  # Ensure it's actually an integer, might've been calculated.
+        print(self.map_size)
 
         # Slam Preparation
         self.ratio = map_meters*1000 / self.map_size  # For converting MM to px.
