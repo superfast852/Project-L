@@ -40,6 +40,11 @@ class Drive:  # TODO: Implement self.max properly
             self.comm_thread = Thread(target=self.comms, args=(com, baud))
             self.comm_thread.start()
         self.positioner = Positioning()
+        self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
+                            (-1, 1, 1, -1), (1, -1, -1, 1),  # Left, Right
+                            (0, 1, 1, 0), (-1, 0, 0, -1),    # TopLeft, BottomLeft
+                            (1, 0, 0, 1), (0, -1, -1, 0),    # TopRight, BottomRight
+                            (1, -1, 1, -1), (-1, 1, -1, 1))  # RotateRight, RotateLeft
 
     def cartesian(self, x, y, speed=1, turn=0, flooring=False):
         if flooring:
@@ -168,6 +173,11 @@ class Drive:  # TODO: Implement self.max properly
         self.brake()
         time.sleep(0.1)
         self.thread_life = 0
+
+    def IK(self):
+        return -(-self.lf + self.rf + self.lb - self.rb) / 4, \
+                (self.lf + self.rf + self.lb + self.rb) / 4, \
+                (-self.lf + self.rf - self.lb + self.rb) / 4
 
 
 class MPU:

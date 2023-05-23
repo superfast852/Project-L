@@ -1,4 +1,4 @@
-from HAL import Drive, io as GPIO, time
+from .HAL import Drive, io as GPIO, time
 from networktables import NetworkTables
 
 

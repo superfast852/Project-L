@@ -8,8 +8,10 @@ imu = MPU9250.MPU9250(bus, address)
 imu.begin()
 imu.caliberateAccelerometer()
 print("Acceleration calib successful")
-imu.caliberateAccelerometer()
+imu.caliberateMagPrecise()
 print("Mag calib successful")
+imu.caliberateGyro()
+print("Gyro successful")
 
 accelScale = imu.Accels
 accelBias = imu.AccelBias

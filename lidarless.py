@@ -8,7 +8,7 @@ joy = NetworkTables.getTable("Joysticks")
 stat = NetworkTables.getTable("Status")
 data = NetworkTables.getTable("BotData")
 
-while stat.getBoolean("exit", False):  # If an exit signal hasn't been sent
+while not stat.getBoolean("exit", False):  # If an exit signal hasn't been sent
 
     # Collect data useful for the robot
     reads = joy.getNumberArray("read", [0, 0, 0, 0, 0])

@@ -25,13 +25,6 @@ min_samples = 50
 pose = (0, 0, 0)
 rrtCoords = None
 
-
-def send2Dash(ins):
-    names = ["lx", "ly", "rx", "ry", "rt", "a", "back", "start"]
-    for name, val in zip(names, ins):
-        dash.putNumber(name, val)
-
-
 while True:
     # Edge Triggers
     mode_change, mode_state = joy.edge(joy.LB, mode_state)
