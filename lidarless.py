@@ -19,3 +19,5 @@ while not stat.getBoolean("exit", False):  # If an exit signal hasn't been sent
 
     # Post data necessary
     data.putNumberArray("speeds", [robot.drive.lf, robot.drive.rf, robot.drive.lb, robot.drive.rb])  # Avoid Arrays!
+print("Exit Detected!")
+robot.exit()

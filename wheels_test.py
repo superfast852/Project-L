@@ -4,26 +4,9 @@ robot = Robot()  # Automatically sets up the server.
 
 drive = robot.drive
 
-drive.lf = 1
-time.sleep(1)
-drive.lf = -1
-time.sleep(1)
-drive.lf = 0
-
-drive.rf = 1
-time.sleep(1)
-drive.rf = -1
-time.sleep(1)
-drive.rf = 0
-
-drive.lb = 1
-time.sleep(1)
-drive.lb = -1
-time.sleep(1)
-drive.lb = 0
-
-drive.rb = 1
-time.sleep(1)
-drive.rb = -1
-time.sleep(1)
-drive.rb = 0
+directions = ((0, 1), (0, -1), (-1, 0), (1, 0), (1, 1), (-1, -1), (-1, 1), (1, -1))
+for direction in directions:
+    speeds = drive.cartesian(direction[0], direction[1], speed=0.25)
+    names = ("Lf", "Rf", "Lb", "Rb")
+    time.sleep(2)
+robot.exit()

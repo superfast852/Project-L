@@ -1,3 +1,5 @@
+import time
+
 from extensions.tools import XboxController, launchSmartDashboard
 from networktables import NetworkTables
 from extensions.NavStack import SLAM, RRT, Map
@@ -31,12 +33,12 @@ while True:
     change_drive, drive_state = joy.edge(joy.RB, drive_state)
 
     reads = joy.read()
-    reads[0] = -reads[0]  # REMEMBER THIS. THE X AXIS IS INVERTED.
     joyTable.putNumberArray("read", reads[0:5])
 
     if joy.Start:
-        for i in range(100):
-            status.putBoolean("exit", 1)
+        for i in range(10):
+            status.putBoolean("exit", True)
+            time.sleep(0.1)
         NetworkTables.stopServer()
         NetworkTables.stopClient()
         break
@@ -54,6 +56,7 @@ while True:
     if len(distances) >= min_samples and len(distances) == len(angles):
         pose = slam.update(distances, angles)
 
+    status.putBoolean("exit", False)
 
 print("Exiting...")
 NetworkTables.stopClient()

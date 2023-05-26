@@ -16,18 +16,18 @@ class LDrive(Drive):  # Override Communications
         self._lb_pwm = GPIO.PWM(16, 1000)
         self._lb_pwm.start(0)
 
-        GPIO.setup(26, GPIO.OUT)
-        self._rb_pwm = GPIO.PWM(26, 1000)
+        GPIO.setup(7, GPIO.OUT)
+        self._rb_pwm = GPIO.PWM(7, 1000)
         self._rb_pwm.start(0)
 
         GPIO.setup(12, GPIO.OUT)
         GPIO.setup(6, GPIO.OUT)
         GPIO.setup(21, GPIO.OUT)
-        GPIO.setup(19, GPIO.OUT)
+        GPIO.setup(8, GPIO.OUT)
         GPIO.output(12, 0)
         GPIO.output(6, 0)
         GPIO.output(21, 0)
-        GPIO.output(19, 0)
+        GPIO.output(8, 0)
 
         self.lfDir      = lambda x: GPIO.output(21, x)
         self.lfSpeed    = lambda x: self._lf_pwm.ChangeDutyCycle(x)
@@ -35,7 +35,7 @@ class LDrive(Drive):  # Override Communications
         self.rfSpeed    = lambda x: self._rf_pwm.ChangeDutyCycle(x)
         self.lbDir      = lambda x: GPIO.output(12, x)
         self.lbSpeed    = lambda x: self._lb_pwm.ChangeDutyCycle(x)
-        self.rbDir      = lambda x: GPIO.output(19, x)
+        self.rbDir      = lambda x: GPIO.output(8, x)
         self.rbSpeed    = lambda x: self._rb_pwm.ChangeDutyCycle(x)
 
         while self.thread_life:
@@ -43,9 +43,9 @@ class LDrive(Drive):  # Override Communications
             self.lfSpeed(abs(self.lf * 100))
             self.rfDir(self.rf > 0)
             self.rfSpeed(abs(self.rf * 100))
-            self.lbDir(self.lf > 0)
+            self.lbDir(self.lb > 0)
             self.lbSpeed(abs(self.lb * 100))
-            self.rbDir(self.rf > 0)
+            self.rbDir(self.rb > 0)
             self.rbSpeed(abs(self.rb * 100))
             time.sleep(1 / update_freq)
 

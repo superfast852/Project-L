@@ -8,7 +8,7 @@ from rrtplanner.oggen import perlin_occupancygrid
 
 # Other utilities
 from _pickle import dump
-from numpy import array, argwhere, logical_not, ndarray
+from numpy import array, argwhere, logical_not, ndarray, max
 
 
 class Map:
@@ -141,3 +141,15 @@ class RRT:
     @staticmethod
     def getWaypoints(lines):
         return [i[1] for i in lines]
+
+
+if __name__ == "__main__":
+    from matplotlib.pyplot import imshow, show
+    from numpy import load
+
+    planner = RRT()
+    map = Map(load("/home/gg/PycharmProjects/Project_L/map.npy"))
+    path = planner.plan(map.getValidPoint(), map.getValidPoint(), map)
+    print(path)
+    imshow(map.map, cmap="Greys")
+    show()
