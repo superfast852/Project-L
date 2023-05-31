@@ -2,7 +2,6 @@ import pygame
 import pygame_gui
 from pygame import Surface, draw, sprite
 from extensions.tools import XboxController
-from extensions.tools import smoothSpeed
 from ast import literal_eval
 
 # TODO: Add charging station, Add collision, Add A*, general fixes
@@ -154,6 +153,17 @@ class ChargingStation(sprite.Sprite):
             self.rect.x, self.rect.y = (1394, 469)
         else:
             self.rect.x, self.rect.y = (0, 0)
+
+
+def smoothSpeed(current, target, speed_lim=1, min_speed=0.1, smoothing_spread=10):
+    distance = current-target
+    try:
+        direction = -distance/abs(distance)
+        speed = min(9, (distance/10)**2/smoothing_spread)
+        output = (1+speed)*direction/10*speed_lim
+        return output if abs(output) > min_speed else min_speed*direction
+    except ZeroDivisionError:
+        return 0
 
 
 def compare_pos(a, b, tol=1):

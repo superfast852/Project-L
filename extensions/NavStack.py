@@ -3,12 +3,11 @@
 from breezyslam.algorithms import RMHC_SLAM
 
 # Path Planning
-from rrtplanner import RRTStarInformed, random_point_og
-from rrtplanner.oggen import perlin_occupancygrid
+from extensions.rrt_backend import RRTStarInformed, random_point_og
 
 # Other utilities
 from _pickle import dump
-from numpy import array, argwhere, logical_not, ndarray, max
+from numpy import array, argwhere, logical_not, ndarray, max, load
 
 
 class Map:
@@ -16,8 +15,11 @@ class Map:
         # The IR Map is just the RRT Map format.
 
         if map == "random":
-            # Create a randomly generated map for testing purposes.
-            self.map = perlin_occupancygrid(800, 800)  # Formatted as an RRT Map.
+            # Get a randomly generated map for testing.
+            try:
+                self.map = load("./map.npy")  # Formatted as an RRT Map.
+            except FileNotFoundError:
+                self.map = load("../map.npy")
 
         elif isinstance(map, bytearray):
             # convert from slam to IR
@@ -145,10 +147,9 @@ class RRT:
 
 if __name__ == "__main__":
     from matplotlib.pyplot import imshow, show
-    from numpy import load
 
     planner = RRT()
-    map = Map(load("/home/gg/PycharmProjects/Project_L/map.npy"))
+    map = Map("random")
     path = planner.plan(map.getValidPoint(), map.getValidPoint(), map)
     print(path)
     imshow(map.map, cmap="Greys")

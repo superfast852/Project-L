@@ -1,10 +1,8 @@
 from extensions.NavStack import RRT, Map
 from rrtplanner.plots import plot_og
 from matplotlib.pyplot import subplots, show
-from numpy import load
 
 map = Map("random")
-map.map = load("map.npy")
 planner = RRT(n=500)
 fig, ax = subplots(1, 1)
 start = 0, 799

@@ -55,7 +55,7 @@ class Robot:
     def __init__(self):
         NetworkTables.initialize()
         self.lidar = RP_A1()  # LD06()
-        self.drive = LDrive(collision_fn=self.lidar.autoStopCollision, arg=10)
+        self.drive = LDrive(collision_fn=self.lidar.autoStopCollision, arg=1000 )
         self.io = GPIO
 
     def exit(self):

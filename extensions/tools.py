@@ -1,7 +1,9 @@
 import math
 from os import system
-from inputs import get_gamepad
+from evdev import InputDevice, ecodes
 from threading import Thread
+from numpy import linspace
+from numba import njit
 
 
 class XboxController(object):
@@ -9,11 +11,19 @@ class XboxController(object):
     MAX_JOY_VAL = 32768
 
     def __init__(self, deadzone=0.1):
-
+        i = 0
+        while True:
+            try:
+                self.gamepad = InputDevice(f'/dev/input/event{i}')
+                break
+            except OSError:
+                i += 1
+                if i > 50:
+                    raise OSError("No controller found")
         self.deadzone = deadzone
         self.found = False
         self.LJoyY = 0
-        self.LJoyX = 0
+        self.LJoyX = 0  # This. Also normalize joystick values
         self.RJoyY = 0
         self.RJoyX = 0
         self.LT = 0
@@ -47,65 +57,88 @@ class XboxController(object):
         return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
 
     def _monitor_controller(self):
-        while True:
-            try:
-                events = get_gamepad()
-                for event in events:
-                    if event.code == 'ABS_Y':
-                        self.LJoyY = self._clean(-(event.state / XboxController.MAX_JOY_VAL))  # normalize between -1 and 1
-                    elif event.code == 'ABS_X':
-                        self.LJoyX = self._clean(event.state / XboxController.MAX_JOY_VAL)  # normalize between -1 and 1
-                    elif event.code == 'ABS_RY':
-                        self.RJoyY = self._clean(-(event.state / XboxController.MAX_JOY_VAL))  # normalize between -1 and 1
-                    elif event.code == 'ABS_RX':
-                        self.RJoyX = self._clean(event.state / XboxController.MAX_JOY_VAL)  # normalize between -1 and 1
-                    elif event.code == 'ABS_Z':
-                        self.LT = self._clean(event.state / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
-                    elif event.code == 'ABS_RZ':
-                        self.RT = self._clean(event.state / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
-                    elif event.code == 'BTN_TL':
-                        self.LB = event.state
-                    elif event.code == 'BTN_TR':
-                        self.RB = event.state
-                    elif event.code == 'BTN_SOUTH':
-                        self.A = event.state
-                    elif event.code == 'BTN_NORTH':
-                        self.X = event.state  # previously switched with X
-                    elif event.code == 'BTN_WEST':
-                        self.Y = event.state  # previously switched with Y
-                    elif event.code == 'BTN_EAST':
-                        self.B = event.state
-                    elif event.code == 'BTN_THUMBL':
-                        self.LJoyB = event.state
-                    elif event.code == 'BTN_THUMBR':
-                        self.RJoyB = event.state
-                    elif event.code == 'BTN_SELECT':
-                        self.Back = event.state
-                    elif event.code == 'BTN_START':
-                        self.Start = event.state
-                    elif event.code == 'ABS_HAT0Y':
-                        self.UD = event.state == -1
-                        self.DD = event.state == 1
-                    elif event.code == 'ABS_HAT0X':
-                        self.LD = event.state == -1
-                        self.RD = event.state == 1
-            except Exception as e:
-                pass
+        try:
+            for event in self.gamepad.read_loop():
+                # Axis
+                if event.type == ecodes.EV_ABS:
+                    if event.code == 1:
+                        self.LJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
+                    elif event.code == 0:
+                        self.LJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL - 1)  # normalize between -1 and 1
+                    elif event.code == 5:
+                        self.RJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
+                    elif event.code == 2:
+                        self.RJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL) - 1  # normalize between -1 and 1
+                    elif event.code == 10:
+                        self.LT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
+                    elif event.code == 9:
+                        self.RT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
+                        # DPad
+
+                    elif event.code == 17:
+                        if event.value == 1:
+                            self.UD = 1
+                            self.DD = 0
+                        elif event.value == -1:
+                            self.UD = 0
+                            self.DD = 1
+
+                    elif event.code == 16:
+                        if event.value == 1:
+                            self.LD = 1
+                            self.RD = 0
+                        elif event.value == -1:
+                            self.LD = 0
+                            self.RD = 1
+
+                elif event.type == ecodes.EV_KEY:
+                    # Bumpers
+                    if event.code == 310:
+                        self.LB = event.value
+                    elif event.code == 311:
+                        self.RB = event.value
+
+                    # Face Buttons
+                    elif event.code == 304:
+                        self.A = event.value
+                    elif event.code == 307:
+                        self.X = event.value  # previously switched with X
+                    elif event.code == 308:
+                        self.Y = event.value  # previously switched with Y
+                    elif event.code == 305:
+                        self.B = event.value
+
+                    # Joystick Buttons
+                    elif event.code == 317:
+                        self.LJoyB = event.value
+                    elif event.code == 318:
+                        self.RJoyB = event.value
+
+                    # Menu Buttons
+                    elif event.code == 158:
+                        self.Back = event.value
+                    elif event.code == 315:
+                        self.Start = event.value
+
+        except Exception as e:
+            print(e)
+
     @staticmethod
     def edge(pulse, last, rising=True):
         status = (pulse if rising else not pulse) and pulse != last
         return status, pulse
 
 
-def smoothSpeed(current, target, speed_lim=1, min_speed=0.1, smoothing_spread=10):
-    distance = current-target
-    try:
-        direction = -distance/abs(distance)
-        speed = min(9, (distance/10)**2/smoothing_spread)
-        output = (1+speed)*direction/10*speed_lim
-        return output if abs(output) > min_speed else min_speed*direction
-    except ZeroDivisionError:
-        return 0
+@njit
+def smoothSpeed(x, target, steps=100):
+    height = abs(x-target)
+    if height == 0:
+        return [0.0, 0.0]
+    slope = 10/height if target < x else -10/height
+    yshift = min(x, target)
+
+    return [(height / (1 + 2.71828**(slope*i+5))+yshift) \
+            for i in linspace(0 if x < target else -height, height if x < target else 0, steps)]
 
 
 def getAngle(x, y):
@@ -138,6 +171,7 @@ def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
     system(f"java -jar {path} >/dev/null 2>&1 &")
 
 
+smoothSpeed(0.0, 0.0)  # Call it to compile the function
 if __name__ == "__main__":
     joy = XboxController(0.15)
     states = {"RB": 0}

@@ -1,7 +1,6 @@
 import pygame
 from pygame import Surface, draw, sprite
 from extensions.tools import XboxController
-from extensions.tools import smoothSpeed
 import pickle
 import math
 
@@ -106,6 +105,17 @@ class Robot(sprite.Sprite):
             rSpeed = smoothSpeed(0, angle_diff, speed_lim=speed, min_speed=0.5)
             self.rotate(rSpeed)
             return rSpeed
+
+
+def smoothSpeed(current, target, speed_lim=1, min_speed=0.1, smoothing_spread=10):
+    distance = current-target
+    try:
+        direction = -distance/abs(distance)
+        speed = min(9, (distance/10)**2/smoothing_spread)
+        output = (1+speed)*direction/10*speed_lim
+        return output if abs(output) > min_speed else min_speed*direction
+    except ZeroDivisionError:
+        return 0
 
 
 def compare_pos(a, b, tol=1):

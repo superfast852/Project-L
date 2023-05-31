@@ -50,8 +50,8 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [-] Autonomous
 - [ ] Low Level -> High Level Interface 
 - [ ] Given Path Following
-- [-] A*/RRT Path Planning
-- [-] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
+- [X] A*/RRT Path Planning
+- [X] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [X] Drive Integration
 - [-] HMI-Like Control Interface using Shuffleboard
 
@@ -60,11 +60,11 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ####    Comms:
 - [ ] Local Communication (Drive -> Pi <- PDB)
-- [-] Remote Communication (Pi -> Dr- [ ] Robot Dashboardiver Station)
-- [ ] Long-Term Data Storage (Maps, Logs, etc.)
+- [X] Remote Communication (Pi -> Driver Station)
+- [X] Long-Term Data Storage (Maps, Logs, etc.)
 
 ####    Base:
-- [ ] Get the damn base
+- [X] Get the damn base
 - [ ] Expandability Standard
 
 ---
@@ -83,4 +83,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ---
 ## Notes:
-- Install RPiSim when pulling the lib. If `pip install gpiosimulator` fails, install manually.
++ None for now.

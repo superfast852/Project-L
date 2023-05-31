@@ -1,4 +1,5 @@
 """HAL: Hardware Abstraction Layer"""
+# TODO: Integrate MecanumKinematics (replaces Positioning) and Odometry
 
 import math
 import time
@@ -26,7 +27,6 @@ except ImportError:
 
 class Drive:  # TODO: Implement self.max properly
     def __init__(self, com='/dev/ttyACM0', baud=115200, max_speed=1, collision_fn=lambda x: [(x, "hi")], arg=None):
-        # IDEA: Use the MPU to get the velocities. Then, use Inverse Kinematics to get individual wheel speeds.
         self.lf = 0
         self.rf = 0
         self.lb = 0
@@ -39,13 +39,15 @@ class Drive:  # TODO: Implement self.max properly
         if not sim:
             self.comm_thread = Thread(target=self.comms, args=(com, baud))
             self.comm_thread.start()
-        self.positioner = Positioning()
+        self.kinematics = MecanumKinematics((0, 0, 0, 0))
+        self.positioning = Positioning()  # DEPRECATED. MUST REMOVE
         self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
                             (-1, 1, 1, -1), (1, -1, -1, 1),  # Left, Right
                             (0, 1, 1, 0), (-1, 0, 0, -1),    # TopLeft, BottomLeft
                             (1, 0, 0, 1), (0, -1, -1, 0),    # TopRight, BottomRight
                             (1, -1, 1, -1), (-1, 1, -1, 1))  # RotateRight, RotateLeft
 
+    # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0, flooring=False):
         if flooring:
             theta = math.radians(getAngle(x, y) % 10)
@@ -83,7 +85,7 @@ class Drive:  # TODO: Implement self.max properly
 
         return lf, rf, lb, rb
 
-    def tank(self, x, power=1, turn=0):
+    def tank(self, x, y, power=1, turn=0):
         # TODO: Add turn directly onto function. Add Collision Detection.
         # collisions = self.collision_fn(self.arg)
         if power != 0:
@@ -100,6 +102,8 @@ class Drive:  # TODO: Implement self.max properly
             # 1:
             #   l = 1+(1/1*0) = 1
             #   r = 1-(1/1*1) = 0
+            if y < 0.2:
+                power = -power
             lf = lb = round((power + (power / abs(power) * min(0, x))), 3)
             rf = rb = round((power - ((power / abs(power)) * max(0, x))), 3)
         elif turn != 0:
@@ -113,6 +117,39 @@ class Drive:  # TODO: Implement self.max properly
         self.rb = rb
         return lf, rf, lb, rb
 
+    def comms(self, com, baud, update_freq=10):
+        # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
+        import serial
+        self.board = serial.Serial(com, baud)
+        while self.thread_life:
+            self.board.write(f"{self.lf},{self.rf},{self.lb},{self.rb}".encode("utf-8"))
+            time.sleep(1/update_freq)
+
+    def drive(self, x, y, power, turn, flooring=False):
+        if self.mecanum:
+            return self.cartesian(x, y, power, turn, flooring)
+        else:
+            return self.tank(x, power, turn)
+
+    def switchDrive(self):
+        self.mecanum = not self.mecanum
+
+    def brake(self):
+        self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
+        time.sleep(0.1)
+        self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+
+    def smoothBrake(self):
+        lfL = smoothSpeed(self.lf, 0)
+        rfL = smoothSpeed(self.rf, 0)
+        lbL = smoothSpeed(self.lb, 0)
+        rbL = smoothSpeed(self.rb, 0)
+        for lf, rf, lb, rb in zip(lfL, rfL, lbL, rbL):
+            self.lf, self.rf, self.lb, self.rb = lf, rf, lb, rb
+            time.sleep(0.01)
+
+    # Advanced Movement Functions
+    # Add MecanumKinematics and NewSmooth
     def smoothMove(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
         waiting = 1
         while (inTolerance(x, self.positioner.pose[0], tolerance) or inTolerance(y, self.positioner.pose[1], tolerance)
@@ -123,6 +160,7 @@ class Drive:  # TODO: Implement self.max properly
                            speed, smoothSpeed(self.positioner.pose[2], theta))
             waiting = wait
 
+    # Add MecanumKinematics
     def moveTo(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
         xDir = 0
         yDir = 0
@@ -149,35 +187,10 @@ class Drive:  # TODO: Implement self.max properly
                 break
             waiting = wait
 
-    def comms(self, com, baud, update_freq=10):
-        # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
-        import serial
-        self.board = serial.Serial(com, baud)
-        while self.thread_life:
-            self.board.write(f"{self.lf},{self.rf},{self.lb},{self.rb}".encode("utf-8"))
-            time.sleep(1/update_freq)
-
-    def drive(self, x, y, power, turn, flooring=False):
-        if self.mecanum:
-            return self.cartesian(x, y, power, turn, flooring)
-        else:
-            return self.tank(x, power, turn)
-
-    def switchDrive(self):
-        self.mecanum = not self.mecanum
-
-    def brake(self):
-        self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
-
     def exit(self):
         self.brake()
         time.sleep(0.1)
         self.thread_life = 0
-
-    def IK(self):
-        return -(-self.lf + self.rf + self.lb - self.rb) / 4, \
-                (self.lf + self.rf + self.lb + self.rb) / 4, \
-                (-self.lf + self.rf - self.lb + self.rb) / 4
 
 
 class MPU:
@@ -283,10 +296,12 @@ class Arm:
         time.sleep(0.1)
         self.move(self.home)
 
+    # TODO: Update Smooth Movement
     def move(self, pose=None, wait=1):
         if pose is None:
             pose = self.pose
         waiting = 1
+
         while waiting and self.pose != pose:
             for i, joint in enumerate(self.arm):
                 position = int(smoothSpeed(self.pose[i], pose[i], 10, 1, self.smoothness))
@@ -309,7 +324,7 @@ class Battery:
         return self.ina.bus_voltage+self.ina.shunt_voltage, self.ina.current
 
 
-class Positioning:
+class Positioning:  # TODO: REMOVE THIS.
     def __init__(self, starting=(0, 0, 0)):
         self.pose = starting
         self.encoders = [0]*4
@@ -343,9 +358,12 @@ class RP_A1(RPLidarA1):
         items = [item for item in next(self.scanner)]
         angles = [item[1] for item in items]
         distances = [item[2] for item in items]
-        distances, angles = self.rotate_lidar_readings(zip(distances, angles), self.rotation)
+        distances, angles = list(zip(*self.rotate_lidar_readings(zip(distances, angles), self.rotation)))
         for i in range(len(angles)):
-            self.map[angles[i]] = distances[i]
+            try:
+                self.map[angles[i]] = distances[i]
+            except IndexError:
+                pass
         return angles, distances
 
     def exit(self):
@@ -418,4 +436,36 @@ class RP_A1(RPLidarA1):
 
             rotated_readings.append((distance, rotated_angle))
 
-        return rotated_readings
+        return list(zip(*rotated_readings))
+
+
+class MecanumKinematics:  # TODO: ADD THIS PROPERLY
+    def __init__(self, ticks, radius=1, wheel2centerDistance=1):
+        self.r = radius
+        self.ticks = ticks
+        self.w2c = wheel2centerDistance
+        self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4)
+        self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4)
+        self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (
+                    self.r / (4 * self.w2c))
+
+    def updatePosition(self, ticks):
+        self.ticks = ticks
+        x = self.x(ticks[0], ticks[1], ticks[2], ticks[3])
+        y = self.y(ticks[0], ticks[1], ticks[2], ticks[3])
+        w = self.w(ticks[0], ticks[1], ticks[2], ticks[3])
+        self.position = (x, y, w)
+        return self.position
+
+    def getTicks(self, x, y, w):
+        recip = 1 / self.r
+        turn = self.w2c * w
+        xy = x + y
+        notxy = x - y
+        return [recip * (notxy - turn), recip * (xy + turn),
+                recip * (xy - turn), recip * (notxy + turn)]
+
+
+class Encoders:
+    def __init__(self, lf, rf, lb, rb):  # TODO: IMPLEMENT THIS. Maybe integrate to the kinematics class?
+        self.ticks = [0, 0, 0, 0]
