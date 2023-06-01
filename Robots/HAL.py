@@ -1,10 +1,9 @@
 """HAL: Hardware Abstraction Layer"""
 # TODO: Integrate MecanumKinematics (replaces Positioning) and Odometry
 
-import math
 import time
 from threading import Thread
-from extensions.tools import getAngle, smoothSpeed, inTolerance
+from extensions.tools import getAngle, smoothSpeed, inTolerance, math
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar
 from itertools import groupby
