@@ -1,12 +1,12 @@
 import math
 from os import system
-from evdev import InputDevice, ecodes
 from threading import Thread
 from numpy import linspace
 from numba import njit
 
 
 class XboxController(object):
+    from evdev import InputDevice, ecodes
     MAX_TRIG_VAL = 1024
     MAX_JOY_VAL = 32768
 
@@ -14,7 +14,7 @@ class XboxController(object):
         i = 0
         while True:
             try:
-                self.gamepad = InputDevice(f'/dev/input/event{i}')
+                self.gamepad = self.InputDevice(f'/dev/input/event{i}')
                 break
             except OSError:
                 i += 1
@@ -60,7 +60,7 @@ class XboxController(object):
         try:
             for event in self.gamepad.read_loop():
                 # Axis
-                if event.type == ecodes.EV_ABS:
+                if event.type == self.ecodes.EV_ABS:
                     if event.code == 1:
                         self.LJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
                     elif event.code == 0:
@@ -91,7 +91,7 @@ class XboxController(object):
                             self.LD = 0
                             self.RD = 1
 
-                elif event.type == ecodes.EV_KEY:
+                elif event.type == self.ecodes.EV_KEY:
                     # Bumpers
                     if event.code == 310:
                         self.LB = event.value
