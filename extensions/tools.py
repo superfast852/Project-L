@@ -6,15 +6,15 @@ from numba import njit
 
 
 class XboxController(object):
-    from evdev import InputDevice, ecodes
     MAX_TRIG_VAL = 1024
     MAX_JOY_VAL = 32768
 
     def __init__(self, deadzone=0.1):
+        from evdev import InputDevice
         i = 0
         while True:
             try:
-                self.gamepad = self.InputDevice(f'/dev/input/event{i}')
+                self.gamepad = InputDevice(f'/dev/input/event{i}')
                 break
             except OSError:
                 i += 1
@@ -57,10 +57,11 @@ class XboxController(object):
         return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
 
     def _monitor_controller(self):
+        from evdev import ecodes
         try:
             for event in self.gamepad.read_loop():
                 # Axis
-                if event.type == self.ecodes.EV_ABS:
+                if event.type == ecodes.EV_ABS:
                     if event.code == 1:
                         self.LJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
                     elif event.code == 0:
@@ -91,7 +92,7 @@ class XboxController(object):
                             self.LD = 0
                             self.RD = 1
 
-                elif event.type == self.ecodes.EV_KEY:
+                elif event.type == ecodes.EV_KEY:
                     # Bumpers
                     if event.code == 310:
                         self.LB = event.value
