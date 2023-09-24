@@ -1,8 +1,6 @@
 import math
 from os import system
 from threading import Thread
-from numpy import linspace
-from numba import njit
 
 
 class XboxController(object):
@@ -130,16 +128,17 @@ class XboxController(object):
         return status, pulse
 
 
-@njit
-def smoothSpeed(x, target, steps=100):
-    height = abs(x-target)
-    if height == 0:
-        return [0.0, 0.0]
-    slope = 10/height if target < x else -10/height
-    yshift = min(x, target)
+def smoothSpeed(start, stop, lapse=100):
+    def smooth(stamp):
+        t = stamp/lapse
+        if t < 0.5:
+            res = 4 * t * t * t
+        else:
+            p = 2 * t - 2
+            res = 0.5 * p * p * p + 1
+        return stop*res + start*(1-res)
 
-    return [(height / (1 + 2.71828**(slope*i+5))+yshift) \
-            for i in linspace(0 if x < target else -height, height if x < target else 0, steps)]
+    return smooth
 
 
 def getAngle(x, y):
@@ -172,7 +171,6 @@ def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
     system(f"java -jar {path} >/dev/null 2>&1 &")
 
 
-smoothSpeed(0.0, 0.0)  # Call it to compile the function
 if __name__ == "__main__":
     joy = XboxController(0.15)
     states = {"RB": 0}

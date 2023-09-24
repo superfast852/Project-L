@@ -8,7 +8,7 @@ from _pickle import load
 # TODO: Turn centerline pixel coords into lines.
 plt.rcParams["figure.autolayout"] = True
 fig, ax = plt.subplots(2, 2)
-path = "lmap2.png"  # "classroom.pkl"
+path = "classroom.pkl"  # "classroom.pkl"
 # Load the input image
 if path.endswith(".pkl"):
     with open(path, "rb") as f:

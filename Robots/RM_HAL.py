@@ -1,6 +1,3 @@
-"""HAL: Hardware Abstraction Layer"""
-# TODO: Integrate MecanumKinematics (replaces Positioning) and Odometry
-
 import time
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, inTolerance, math
@@ -8,34 +5,24 @@ from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar
 from itertools import groupby
 from operator import itemgetter
-
-try:
-    import RPi.GPIO as io
-    io.setmode(io.BCM)
-    io.setwarnings(False)
-    sim = False
-except ImportError:
-    sim = True
-
-    class io:
-        @staticmethod
-        def cleanup():
-            pass
-    io = io()
+from Rosmaster_Lib import Rosmaster
+driver = Rosmaster("/dev/ttyUSB0")
+driver.create_receive_threading()
 
 
 class Drive:  # TODO: Implement self.max properly
-    def __init__(self, com='/dev/ttyACM0', baud=115200, max_speed=1):
+    def __init__(self, max_speed=1, collision_fn=lambda x: range(360), arg=None):
         self.lf = 0
         self.rf = 0
         self.lb = 0
         self.rb = 0
         self.max = max_speed
         self.mecanum = 1
+        self.collision_fn = collision_fn
+        self.arg = arg
         self.thread_life = 1
-        if not sim:
-            self.comm_thread = Thread(target=self.comms, args=(com, baud))
-            self.comm_thread.start()
+        self.comm_thread = Thread(target=self.comms)
+        self.comm_thread.start()
         self.kinematics = MecanumKinematics((0, 0, 0, 0))
         self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
                             (-1, 1, 1, -1), (1, -1, -1, 1),  # Left, Right
@@ -49,6 +36,10 @@ class Drive:  # TODO: Implement self.max properly
             theta = math.radians(getAngle(x, y) % flooring)
         else:
             theta = math.radians(getAngle(x, y))
+        if theta in self.collision_fn(self.arg):
+            print("[WARNING] Drive: Would Collide!")
+            self.brake()
+            return 0, 0, 0, 0
 
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
@@ -109,8 +100,11 @@ class Drive:  # TODO: Implement self.max properly
         self.rb = rb
         return lf, rf, lb, rb
 
-    def comms(self, com, baud, update_freq=10):
-        pass
+    def comms(self, update_freq=10):
+        # This will most likely not work. Look for alternatives. Wiring everything to the pi isn't such a bad idea imo.
+        while self.thread_life:
+            driver.set_motor(self.lf, self.rf, self.lb, self.rb)
+            time.sleep(1/update_freq)
 
     def drive(self, x, y, power, turn, flooring=False):
         if self.mecanum:
@@ -136,6 +130,7 @@ class Drive:  # TODO: Implement self.max properly
             time.sleep(break_time/100)
 
     # Advanced Movement Functions
+    # Add NewSmooth
     def smoothMove(self, x, y, theta, speed=1, tolerance=0.1):
         coords = (x, y, theta)
         smoothers = [smoothSpeed(self.kinematics.pose[i], coords[i]) for i in [0, 1, 2]]
@@ -182,38 +177,29 @@ class Drive:  # TODO: Implement self.max properly
 
 class MPU:
     def __init__(self):
-        import smbus
-        from imusensor.MPU9250 import MPU9250
-        self.mpu = MPU9250.MPU9250(bus=smbus.SMBus(1), address=0x68) if not sim else NotImplemented
-        if not sim:
-            self.mpu.begin()
-            try:
-                self.mpu.loadCalibDataFromFile("calib.json")
-            except FileNotFoundError:
-                pass
-            self.values = [0] * 3
-            readThread = Thread(target=self._update)
-            readThread.start()
+        self.mag = 0
+        self.gyro = 0
+        self.acc = 0
+        self.thread_life = 1
 
     def _update(self):
-        while self.mpu != NotImplemented:
-            self.mpu.readSensor()
-            self.mpu.computeOrientation()
+        while self.thread_life:
+            self.mag = driver.get_magnetometer_data()
+            self.gyro = driver.get_gyroscope_data()
+            self.acc = driver.get_accelerometer_data()
+            time.sleep(0.1)
 
     def getMag(self):
-        return self.mpu.MagVals if self.mpu != NotImplemented else 0
+        return self.mag
 
     def getGyro(self):
-        return self.mpu.GyroVals if self.mpu != NotImplemented else 0
+        return self.gyro
 
     def getAccel(self):
-        return self.mpu.AccelVals if self.mpu != NotImplemented else 0
-
-    def getAngle(self):
-        return self.mpu.Yaw if self.mpu != NotImplemented else 0
+        return self.acc
 
     def exit(self):
-        self.mpu = NotImplemented
+        self.thread_life = 0
 
 
 class Ultrasonic:
@@ -252,17 +238,17 @@ class Ultrasonic:
 
 
 class Arm:
-    def __init__(self, num_servos=6, smoothness=10):
+    def __init__(self, num_servos=6, lapse=1, steps=100):
         from adafruit_servokit import ServoKit
-        self.smoothness = smoothness
+        self.delay = lapse/steps
+        self.steps = steps
         self.pose = [0] * num_servos
-        if not sim:
-            self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
-            self.arm = [self.kit.servo[i] for i in range(num_servos)]
+        self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
+        self.arm = [self.kit.servo[i] for i in range(num_servos)]
         self.home = [90, 75, 130, 90, 150, 180]
         self.grabbing = [90, 10, 90, 100, 150, 180]
         self.dropping = [90, 50, 20, 0, 150, 0]
-        self.move(self.home) if not sim else NotImplemented
+        self.move(self.home)
 
     def grab(self):
         self.pose[-1] = 0
@@ -283,32 +269,25 @@ class Arm:
         time.sleep(0.1)
         self.move(self.home)
 
-    # TODO: Update Smooth Movement
-    def move(self, pose=None, wait=1):
+    def move(self, pose=None):
         if pose is None:
             pose = self.pose
-        waiting = 1
 
-        while waiting and self.pose != pose:
-            for i, joint in enumerate(self.arm):
-                position = int(smoothSpeed(self.pose[i], pose[i], 10, 1, self.smoothness))
-                self.pose[i] += position
-                joint.angle = self.pose[i]
-                time.sleep(0.005)
-            waiting = wait
+        move_prof = [smoothSpeed(self.pose[i], pose[i], self.steps) for i in range(len(self.pose))]
+        for i in range(self.steps):
+            for n in range(len(self.arm)):
+                self.arm[n].angle = int(move_prof[n][i])
+            time.sleep(self.delay)
 
 
 class Battery:
     # TODO: check if this works.
     def __init__(self):
-        from adafruit_ina219 import INA219
-        import board
-        import busio
-        self.i2c = busio.I2C(board.SCL, board.SDA)
-        self.ina = INA219(self.i2c)
+        self.batt = 0
 
     def read(self):
-        return self.ina.bus_voltage+self.ina.shunt_voltage, self.ina.current
+        self.batt = driver.get_battery_voltage()
+        return self.batt
 
 
 class RP_A1(RPLidarA1):
@@ -405,19 +384,21 @@ class MecanumKinematics:  # TODO: ADD THIS PROPERLY
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (
                     self.r / (4 * self.w2c))
         self.pose = [0, 0, 0]
+        self.thread = Thread(target=self.updatePosition)
+        self.thread.start()
 
-    def updatePosition(self, ticks):
-        self.ticks = ticks
-        self.pose[0] = self.x(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
-        self.pose[1] = self.y(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
-        self.pose[2] = self.w(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
-        return self.pose
+    def updatePosition(self):
+        while True:
+            self.ticks = driver.get_motor_encoder()
+            self.pose[0] = self.x(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
+            self.pose[1] = self.y(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
+            self.pose[2] = self.w(self.ticks[0], self.ticks[1], self.ticks[2], self.ticks[3])
+            time.sleep(1/30)
 
     def getTicks(self, x, y, w):
         recip = 1 / self.r
         turn = self.w2c * w
-        xy = x - y
-        notxy = x + y
+        xy = x + y
+        notxy = x - y
         return [recip * (notxy - turn), recip * (xy + turn),
                 recip * (xy - turn), recip * (notxy + turn)]
-

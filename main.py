@@ -32,6 +32,7 @@ try:
         angles, distances = robot.lidar.read()
 
         if stat.getBoolean("mode", 0):  # Autonomous
+            # NOTE: There could be a serious jam in here, due to driving mode.
             direction = robot.lidar.self_nav(collision_check_range, collision_threshold, (90, 270), (270, 360))
             if direction == "Forward":
                 robot.drive.drive(0, 1, auto_speed, 0)

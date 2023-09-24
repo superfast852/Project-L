@@ -59,7 +59,7 @@ try:
         try:
             map_pose = slam.px2pose(pose)
             map_pose = [i/1000 for i in map_pose]
-            visualizer.display(map_pose[0], map_pose[1], map_pose[2], map.toSlam())
+            #visualizer.display(map_pose[0], map_pose[1], map_pose[2], map.toSlam())
         except Exception as e:
             print(f"[ERROR] Map: {e}")
 

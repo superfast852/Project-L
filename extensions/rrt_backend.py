@@ -556,3 +556,12 @@ class RRTStarInformed(RRT):
         T = self.build_graph(vgoal, points, parents, vcosts)
 
         return T, vgoal
+
+
+if __name__ == "__main__":
+    from NavStack import Map
+    map = Map("random")
+    start, end = [random_point_og(map.map) for _ in range(2)]
+    rrt = RRTStarInformed(map.map, 100, 512, 10)
+    tree, route = rrt.plan(start, end)
+    lines = rrt.vertices_as_ndarray(tree, rrt.route2gv(tree, route))
