@@ -96,3 +96,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - Communications (pynetworktables or local server, we'll see)
 - GUI
 - Odometry and Positioning (Unify encoder position with lidar position plz thx :)
+- PLEASE ADD LOGGING AHHHAHHAHAHAH
