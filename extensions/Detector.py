@@ -1,4 +1,5 @@
 # TODO: Reimplement camview, faster comms, clean up, maybe redo? TRAIN MODEL
+# TODO: Directly implement SORT to the Detector class. Let's not lie to ourselves.
 from torch import device as torchdevice, from_numpy, tensor, randn
 import numpy as np
 import cv2
@@ -39,7 +40,15 @@ class Detections:
 
 
 class Detector:
-    def __init__(self, detector, tracker=None, device=torchdevice('cuda:0'), log=1, filter=None):
+    def __init__(self, detector: str, tracker=None, device=torchdevice('cuda:0'), log=1, filter=None):
+        """
+        TensorRT-Powered YoloV7 Object Detector Class with SORT Object Tracking.
+        :param detector: Path of the .trt or .engine file
+        :param tracker: SORT Object Tracker object to pass onto Detections
+        :param device: The device on which the Model should run
+        :param log: Log Level (Verbose, Info, Warning)
+        :param filter: Makes the Detector return only specific object types (person, car, phone, etc.)
+        """
         self.detector = detector
         self.device = device
         self.tracker = tracker if tracker is not None else Sort(60)
@@ -153,6 +162,12 @@ class Detector:
             return dets.dets  # Extract from class
         else:
             return None
+
+    def exit(self):
+        self.context.destroy()
+
+    def __del__(self):
+        self.exit()
 
 
 def frame_debug(frame, px=25):  # Draw crosshairs
