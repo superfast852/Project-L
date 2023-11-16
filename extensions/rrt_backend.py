@@ -134,7 +134,7 @@ class RRT(object):
         Returns
         -------
         np.ndarray
-            (M x 2) sorted array of points)
+            (M x 2) sorted array of points
         """
         # vector from x to all points
         p2x = points - x
@@ -187,7 +187,7 @@ class RRT(object):
         Returns
         -------
         bool
-            whether or not there is a collision between the two points
+            whether there is a collision between the two points
         """
         x0 = a[0]
         y0 = a[1]
@@ -281,7 +281,7 @@ class RRT(object):
         Parameters
         ----------
         vcosts : np.ndarray
-            (M x 1) array of costs to vertices)
+            (M x 1) array of costs to vertices
         points : np.ndarray
             (Mx2) array of points
         xgoal : np.ndarray
@@ -560,8 +560,13 @@ class RRTStarInformed(RRT):
 
 if __name__ == "__main__":
     from NavStack import Map
+    from time import sleep
     map = Map("random")
     start, end = [random_point_og(map.map) for _ in range(2)]
     rrt = RRTStarInformed(map.map, 100, 512, 10)
     tree, route = rrt.plan(start, end)
     lines = rrt.vertices_as_ndarray(tree, rrt.route2gv(tree, route))
+    map.addPath(lines)
+    for i in range(5):
+        map.animate()
+    sleep(5)

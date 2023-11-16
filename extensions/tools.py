@@ -1,7 +1,19 @@
 import math
+import time
 from os import system
 from threading import Thread
+import numpy as np
+from serial.tools.list_ports import comports
+from numba import njit
 
+
+def find_port_by_vid_pid(vid, pid):
+    ports = list(comports())
+
+    for port in ports:
+        if port.vid == vid and port.pid == pid:
+            return port.device
+    return None
 
 class XboxController(object):
     MAX_TRIG_VAL = 1024
@@ -128,6 +140,7 @@ class XboxController(object):
         return status, pulse
 
 
+# IDEA: Bézier curve as smoothing function??? wink wink
 def smoothSpeed(start, stop, lapse=100):
     def smooth(stamp):
         t = stamp/lapse
@@ -142,15 +155,7 @@ def smoothSpeed(start, stop, lapse=100):
 
 
 def getAngle(x, y):
-    # Calculate the angle in radians and rotate it counterclockwise by 90 degrees
-    # Angle grows counterclockwise
-    if x == 0 and y == 0:
-        return 0.0
-    angle = math.degrees(math.atan2(y, x) - math.pi / 2)
-    if angle < 0:
-        angle += 360
-    # Return the angle in degrees
-    return round(angle)
+    return round(math.atan2(y, x), 6)
 
 
 def inTolerance(a, b, tol=1):
@@ -170,13 +175,129 @@ def getCoordinates(angle):
 def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
     system(f"java -jar {path} >/dev/null 2>&1 &")
 
+# ---- Bezier Curves :) ----
+
+def quad_bezier(start, stop, ctrl):
+    start, stop, ctrl = np.array([start, stop, ctrl])
+    P = lambda t: (1-t)**2 * start + 2 * t * (1-t) * ctrl + t**2 * stop
+    return np.array([P(t) for t in np.linspace(0, 1, 50)])
+
+# find the a & b points
+def get_bezier_coef(points):
+    # since the formulas work given that we have n+1 points
+    # then n must be this:
+    n = len(points) - 1
+
+    # build coefficents matrix
+    C = 4 * np.identity(n)
+    np.fill_diagonal(C[1:], 1)
+    np.fill_diagonal(C[:, 1:], 1)
+    C[0, 0] = 2
+    C[n - 1, n - 1] = 7
+    C[n - 1, n - 2] = 2
+
+    # build points vector
+    P = [2 * (2 * points[i] + points[i + 1]) for i in range(n)]
+    P[0] = points[0] + 2 * points[1]
+    P[n - 1] = 8 * points[n - 1] + points[n]
+
+    # solve system, find a & b
+    A = np.linalg.solve(C, P)
+    B = [0] * n
+    for i in range(n - 1):
+        B[i] = 2 * points[i + 1] - A[i + 1]
+    B[n - 1] = (A[n - 1] + points[n]) / 2
+
+    return A, B
+
+
+# returns the general Bezier cubic formula given 4 control points
+def get_cubic(a, b, c, d):
+    return lambda t: np.power(1 - t, 3) * a + 3 * np.power(1 - t, 2) * t * b + 3 * (1 - t) * np.power(t, 2) * c + np.power(t, 3) * d
+
+
+# return one cubic curve for each consecutive points
+def get_bezier_cubic(points):
+    A, B = get_bezier_coef(points)
+    return [
+        get_cubic(points[i], A[i], B[i], points[i + 1])
+        for i in range(len(points) - 1)
+    ]
+
+
+# evaluate each cubic curve on the range [0, 1] sliced in n points
+def evaluate_bezier(points, n):
+    return np.array([fun(t) for fun in get_bezier_cubic(points) for t in np.linspace(0, 1, n)])
+
+
+def line2dots(line):
+    x1, y1, x2, y2 = *line[0], *line[1]
+    points = []
+    issteep = abs(y2-y1) > abs(x2-x1)
+    if issteep:
+        x1, y1 = y1, x1
+        x2, y2 = y2, x2
+    rev = False
+    if x1 > x2:
+        x1, x2 = x2, x1
+        y1, y2 = y2, y1
+        rev = True
+    deltax = x2 - x1
+    deltay = abs(y2-y1)
+    error = int(deltax / 2)
+    y = y1
+    ystep = None
+    if y1 < y2:
+        ystep = 1
+    else:
+        ystep = -1
+    for x in range(x1, x2 + 1):
+        if issteep:
+            points.append((y, x))
+        else:
+            points.append((x, y))
+        error -= deltay
+        if error < 0:
+            y += ystep
+            error += deltax
+    # Reverse the list if the coordinates were reversed
+    if rev:
+        points.reverse()
+    return points
+
+
+def avg(l):
+    return sum(l)/len(l)
+
+
+@njit
+def ecd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    return np.linalg.norm(a-b)
+
+
+# Detection stuff
+def getLabelsFromTxt(path="coco-lbl.txt", verbose=True):
+    with open(path, "r") as lbls:  # Open txt file
+        a = lbls.read()  # Read txt file
+        b = a.split('\n')  # Split by every line into list
+        if verbose: print("Labels Extracted: ", b)  # print extracted list
+        return b
+
+coco = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+         'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+         'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+         'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+         'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+         'hair drier', 'toothbrush']
+
 
 if __name__ == "__main__":
-    joy = XboxController(0.15)
-    states = {"RB": 0}
+    controller = XboxController()
     while True:
-        reads = joy.read()
-        edge, states["RB"] = joy.edge(joy.RB, states['RB'])
-        if edge:
-            break
-        print(reads[3])
+        print(controller.read())
+
+
+

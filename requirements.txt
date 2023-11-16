@@ -1,21 +1,36 @@
-inputs
+﻿# General
+
 numpy
 matplotlib
-pynetworktables
+pynetworktables  # comms
 opencv-python
-numba
-tqdm
-networkx
-evdev
+numba  # Code optimization
+tqdm  # nifty progress bar stuff
+networkx  # Graph Theory
+evdev  # Controller
+ikpy
 
 # Hardware
-#adafruit-circuitpython-servokit
-#rplidar-roboticia~=0.9.5
-#board~=1.0
-#smbus~=1.1
-pyserial
+adafruit-circuitpython-servokit  # Arm
+rplidar-roboticia  # Lidar
+pyserial  # Serial communication. Used for Rosmaster
+
+# these only apply if not using rosmaster.
+#board  # Communicating with INA219
+#smbus
+#adafruit-circuitpython-ina219
+#imusensor
+
+
+# other
+noise
+plotly
+torch
+tensorrt
+filterpy  # for sort tracking
+lap  # linear assignment for sort
 
 # Centerline Calculation
-#scikit-image
+# scikit-image
 
 # Check the installer.sh script

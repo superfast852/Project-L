@@ -5,6 +5,7 @@ import time
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, inTolerance, math
 from breezyslam.sensors import RPLidarA1
+# from breezyslam.vehicles import WheeledVehicle
 from rplidar import RPLidar
 from itertools import groupby
 from operator import itemgetter
@@ -18,8 +19,19 @@ except ImportError:
     sim = True
 
     class io:
+        IN = 1
+        OUT = 2
         @staticmethod
         def cleanup():
+            pass
+
+        def output(self, a, b):
+            pass
+
+        def input(self, a):
+            return 1
+
+        def setup(self, a, b):
             pass
     io = io()
 
@@ -44,11 +56,9 @@ class Drive:  # TODO: Implement self.max properly
                             (1, -1, 1, -1), (-1, 1, -1, 1))  # RotateRight, RotateLeft
 
     # Movement Functions
-    def cartesian(self, x, y, speed=1, turn=0, flooring=False):
-        if flooring:
-            theta = math.radians(getAngle(x, y) % flooring)
-        else:
-            theta = math.radians(getAngle(x, y))
+    def cartesian(self, x, y, speed=1, turn=0):
+        rawTheta = getAngle(x, y)
+        theta = rawTheta - math.pi/2 if rawTheta > math.pi/2 else 2*math.pi - rawTheta
 
         sin = math.sin(theta+math.pi/4)
         cos = math.cos(theta+math.pi/4)
@@ -248,21 +258,21 @@ class Ultrasonic:
         return distance
 
     def read(self, measures=5):
-        return sum([self._get_val() for i in range(measures)])/measures
+        return sum([self._get_val() for _ in range(measures)])/measures
 
 
 class Arm:
-    def __init__(self, num_servos=6, smoothness=10):
+    def __init__(self, num_servos=6, lapse=1, steps=100):
         from adafruit_servokit import ServoKit
-        self.smoothness = smoothness
+        self.delay = lapse / steps
+        self.steps = steps
         self.pose = [0] * num_servos
-        if not sim:
-            self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
-            self.arm = [self.kit.servo[i] for i in range(num_servos)]
+        self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
+        self.arm = [self.kit.servo[i] for i in range(num_servos)]
         self.home = [90, 75, 130, 90, 150, 180]
         self.grabbing = [90, 10, 90, 100, 150, 180]
         self.dropping = [90, 50, 20, 0, 150, 0]
-        self.move(self.home) if not sim else NotImplemented
+        self.move(self.home)
 
     def grab(self):
         self.pose[-1] = 0
@@ -283,19 +293,18 @@ class Arm:
         time.sleep(0.1)
         self.move(self.home)
 
-    # TODO: Update Smooth Movement
-    def move(self, pose=None, wait=1):
+    def move(self, pose=None):
         if pose is None:
             pose = self.pose
-        waiting = 1
 
-        while waiting and self.pose != pose:
-            for i, joint in enumerate(self.arm):
-                position = int(smoothSpeed(self.pose[i], pose[i], 10, 1, self.smoothness))
-                self.pose[i] += position
-                joint.angle = self.pose[i]
-                time.sleep(0.005)
-            waiting = wait
+        move_prof = [smoothSpeed(self.pose[i], pose[i], self.steps) for i in range(len(self.pose))]
+        for i in range(self.steps):
+            for n in range(len(self.arm)):
+                self.arm[n].angle = int(move_prof[n][i])
+            time.sleep(self.delay)
+
+    def fk(self):
+        return 0, 0, 0
 
 
 class Battery:

@@ -1,4 +1,3 @@
-from _pickle import load
 from matplotlib.pyplot import imshow, show
 from extensions.NavStack import Map
 

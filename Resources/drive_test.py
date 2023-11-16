@@ -8,5 +8,5 @@ if __name__ == "__main__":
     while True:
         reads = joy.read()
         edge, states["RB"] = joy.edge(joy.RB, states['RB'])
-        drive.switchDrive() if edge else print(["%.3f" % i for i in drive.drive(reads[0], reads[1], reads[4], reads[2])], getAngle(reads[0], reads[1]))
+        drive.switchDrive() if edge else print(["%.3f" % i for i in drive.drive(reads[0], reads[1], reads[4], reads[2])], getAngle(reads[0], reads[1])*3.14159265/180)
 

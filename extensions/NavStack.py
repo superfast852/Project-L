@@ -1,22 +1,32 @@
-# TODO: Implement matplotlib animation. (https://pythonprogramming.net/live-graphs-matplotlib-tutorial/)
+# NOTE: The code crashing is due to the IDE, not the code itself.
 # SLAM
 from __future__ import annotations
 
+import math
+
+import numpy as np
 from breezyslam.algorithms import RMHC_SLAM
 
 # Path Planning
 try:
     from extensions.rrt_backend import RRTStarInformed, random_point_og  # TODO: Find something else, dude.
+    from extensions.tools import evaluate_bezier, line2dots, ecd, getAngle
 except ModuleNotFoundError:
     from rrt_backend import RRTStarInformed, random_point_og
+    from tools import evaluate_bezier, line2dots, ecd, getAngle
 
 # Other utilities
 from _pickle import dump, load
-from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, linspace, random
-from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle
-from threading import Thread
+from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, linspace, random, append as npappend, float32
+from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle, arrowedLine, imshow, waitKey
+
+
+def pymap(n, func):
+    return map(func, n)
+
 
 class Map:
+    paths = []
     def __init__(self, map):
         # The IR Map is just the RRT Map format.
 
@@ -30,23 +40,21 @@ class Map:
             elif "pkl" in map:
                 with open(map, "rb") as f:
                     values = load(f, allow_pickle=True)
-                    if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
-                        size, bytearr = values
-                        print(size)
-                        map = array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
-                        for index in argwhere(map < 200):  # First we pull down the readings below quality.
-                            map[index[0], index[1]] = 0
-                        for index in argwhere(
-                                map >= 200):  # Then we pull up the readings above quality and convert to 1.
-                            map[index[0], index[1]] = 1
-                        # Finally we invert the map, so 0 is free space and 1 is occupied space.
-                        self.map = logical_not(map).astype(int)
-                        self.map_size = size
-                    else:
-                        if isinstance(values, ndarray):
-                            self.map = values
-                        else:
-                            raise ValueError("Could not extract map from .pkl file.")
+                if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
+                    size, bytearr = values
+                    map = array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
+                    for index in argwhere(map < 200):  # First we pull down the readings below quality.
+                        map[index[0], index[1]] = 0
+                    for index in argwhere(
+                            map >= 200):  # Then we pull up the readings above quality and convert to 1.
+                        map[index[0], index[1]] = 1
+                    # Finally we invert the map, so 0 is free space and 1 is occupied space.
+                    self.map = logical_not(map).astype(int)
+                    self.map_size = size
+                else:
+                    self.__init__(values)
+            else:
+                raise ValueError("Could not extract map from .pkl file.")
 
         elif isinstance(map, bytearray):
             # convert from slam to IR
@@ -78,6 +86,7 @@ class Map:
 
         else:
             raise ValueError("Map format unidentified.")
+        self.map_center = [i//2 for i in self.map.shape]
 
     def update(self, map):
         self.__init__(map)
@@ -108,20 +117,82 @@ class Map:
         map = self.map if not invert else logical_not(self.map)
         return cvtColor(rot90(map).astype(uint8) * 255, COLOR_GRAY2BGR)
 
-    def drawPoint(self, img, point, r=2, c=(0,0,255), t=2):
+    def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
         return cvcircle(img, (point[0], self.map.shape[0]-point[1]), r, c, t)
 
-    def drawLine(self, img, line, c=(0, 255, 0)):
+    def drawPx(self, img, point, c=(0, 0, 255), r=1):
+        for a in range(-r, r):
+            for b in range(-r, r):
+                img[self.map.shape[0]-(point[1]+b)][point[0]+a] = c
+        return img
+
+    def drawLine(self, img, line, c=(0, 255, 0), **kwargs):
         return cvline(img, (line[0][0], self.map.shape[0]-line[0][1]),
-                        (line[1][0], self.map.shape[0]-line[1][1]), c)
+                        (line[1][0], self.map.shape[0]-line[1][1]), c, **kwargs)
+
+    def drawLineOfDots(self, img, line, c=(0, 255, 0)):
+        [self.drawLine(img, (line[i], line[i+1]), c=c, thickness=2) for i in range(len(line)-1)]
 
     def getValidRoute(self, n):
         return [self.getValidPoint() for _ in range(n)]
 
+    def animate(self, img=None, pose=None, drawLines=True):
+        # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
+        if img is None:
+            img = self.tocv2()
+        if drawLines:
+            for path in self.paths:
+                try:
+                    path = path.tolist()
+                except AttributeError:
+                    pass
+                if path:
+                    img = self.drawPoint(img, path[0][0], 4)
+                    img = self.drawPoint(img, path[-1][1], 4)
+                    color = random.randint(0, 256, 3).tolist()
+                    for line in path:
+                        img = self.drawLine(img, line, color)
+        if pose is not None:
+            if pose == "center":
+                arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
+            else:
+                arrowedLine(img, pose[0], pose[1], (0, 0, 255), 3)
+        imshow("Map", img)
+        waitKey(1)
+
+    def addPath(self, route):
+        # TODO: Fix this. it can be brokey
+        # A chain has 3 dimensions, sorta, while a path has 2
+        # In a chain, D[0] = path, D[1] = line, D[2] = Pixel
+        # In a path,  D[0] = line, D[1] = Pixel
+        j = route[0]  # First Dimension
+        i = 0
+        while isinstance(j, list) or isinstance(j, ndarray):
+            i += 1
+            if j != []:
+                try:
+                    j = j[0]
+                except IndexError:
+                    raise IndexError(f"IndexError! Offending path: {route}")
+            else:
+
+                break
+        if i == 3:
+            for path in route:
+                self.paths.append(path)
+        elif i == 2:
+            self.paths.append(route)
+        else:
+            print("Found dead link.")
+            # raise ValueError("Could not determine if route is a chain or path.")
+
 
 class SLAM:
-    def __init__(self, lidar, map_handle, map_meters, update_map=1):
-        self.map = map_handle
+    def __init__(self, lidar, map_handle=None, map_meters=35, update_map=1):
+        self.map = map_handle if map_handle else Map(800)
+        if lidar is None:
+            from breezyslam.sensors import RPLidarA1
+            lidar = RPLidarA1()
         self.mapbytes = self.map.toSlam()
         self.ShouldUpdate = update_map
         self.map_size = len(self.map)  # Ensure it's actually an integer, might've been calculated.
@@ -131,7 +202,7 @@ class SLAM:
         self.slam = RMHC_SLAM(lidar, self.map_size, map_meters)
         self.slam.setmap(self.mapbytes)
 
-    def update(self, distances, angles):
+    def update(self, distances, angles=None, odometry=None):
         # You can choose what angles to feed the slam algo. That way, if the lidar's blocked, you can filter it.
         if angles is None:
             angles = linspace(0, 360, len(distances)).tolist()
@@ -141,7 +212,7 @@ class SLAM:
             angles = angles[:len(distances)]
         elif len(distances) > len(angles):
             distances = distances[:len(angles)]
-        self.slam.update(distances, scan_angles_degrees=angles, should_update_map=self.ShouldUpdate)
+        self.slam.update(distances, odometry, angles, self.ShouldUpdate)
         self.slam.getmap(self.mapbytes)
         self.map.update(self.mapbytes)
         self.pose = self.pose2px(self.slam.getpos())
@@ -155,109 +226,208 @@ class SLAM:
 
     def pose2cv2(self, size=10):  # TF was i tryna do?
         x, y, r = self.pose  # in px
-        color = (0, 0, 255)
-        end_point = (int(x + size * cos(r)), int(y + size * sin(r)))
+        return (x, y), (int(x + size * cos(r)), int(y + size * sin(r)))
 
 
 class RRT:
-    def __init__(self, n=250, obstacle_distance=100, goal_radius=50, pbar=False):
+    # TODO: Deal with dead links. (Dead links are paths that couldnt be found. They're returned as empty lists.)
+    # TODEAL: Make a function to find dead links in a path or chain, i guess
+    def __init__(self, map: Map, n=1000, obstacle_distance=100, goal_radius=50, pbar=False):
         self.n = n
         self.r_rewire = obstacle_distance
         self.r_goal = goal_radius
         self.pbar = pbar
-        self.planner = RRTStarInformed(map.map, self.n, self.r_rewire, self.r_goal, pbar=self.pbar)
+        self.map = map
+        self.planner = RRTStarInformed(self.map.map, self.n, self.r_rewire, self.r_goal, pbar=self.pbar)
 
-    def plan(self, start: list | tuple, goal: list | tuple, map: Map):
-        # TODO: If the map is None, use a preset RRT object.
+    def plan(self, start: list | tuple, goal: list | tuple):
         # If it isn't, update the preset object.
-        if not map.isValidPoint(goal):
-            print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
-            return None  # None indicates no point could be found. We avoid computation that way.
+        xgoal = goal
+        xstart = start
+        found = 0
+        lines = []
+        while not found:
+            if not self.map.isValidPoint(xgoal):
+                print(f"[ERROR] Planner: Goal at {xgoal} is an Obstacle!")
+                return None  # None indicates no point could be found. We avoid computation that way.
 
-        # Create planner with latest map.
-        self.planner.set_og(map.map)
-        # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
-        start = array(start[0:2])
-        goal = array(goal[0:2])
+            # Create planner with latest map.
+            # self.planner.set_og(map.map)
+            # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
+            start = array(xstart[0:2])
+            goal = array(xgoal[0:2])
+            if self.planner.collisionfree(self.map.map, start, goal):
+                return array([[start, goal]])
 
-        tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
-        if route is None:
-            print("[ERROR] Planner: No path was found! Try increasing iterations or decreasing rewire radius.")
-            return None
-        lines = self.planner.vertices_as_ndarray(tree, self.planner.route2gv(tree, route))  # Convert route to lines.
-        # The lines are composed by arrays in form [[start point, end point], [start point, end point], ...]
-        # So we'll just extract every end point to get the waypoints.
-        # Remember, these are pixels.
-        del tree, route, start, goal  # Delete planner and map to free up memory.
+            tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
+            if route is None:
+                print("[ERROR] Planner: No path was found! Try increasing iterations or decreasing rewire radius.")
+                return None
+            lines = self.planner.vertices_as_ndarray(tree, self.planner.route2gv(tree, route))  # Convert route to lines.
+            # The lines are composed by arrays in form [[start point, end point], [start point, end point], ...]
+            # So we'll just extract every end point to get the waypoints.
+            # Remember, these are pixels.
+            del tree, route, start, goal  # Delete planner and map to free up memory.
+            if [] in lines:
+                print("Found Empty Coords!")
+                print(lines)
+            if isinstance(lines, ndarray):
+                if lines.size != 0:
+                    found = 1
+            elif isinstance(lines, list):
+                if lines:
+                    found = 1
+
         return lines
 
     @staticmethod
-    def getWaypoints(lines):
-        return [i[1] for i in lines]
+    def getEndPoints(lines):
+        lines = array(lines)
+        return npappend([lines[0][0]], lines[:, 1], 0)
 
     # Note: Either im a shitty dev or sequential is faster than parallel
-    def chainroute(self, points: list, map: Map, one_dim=False):
+    def chainroute(self, points: list, one_dim=False):
         out = []
         for i in range(len(points)-1):
-            path = self.plan(points[i], points[i+1], map)
+            path = self.plan(points[i], points[i+1])
+            if path == []:
+                print("Invalid path found.")
             if one_dim:
                 out += path
             else:
                 out.append(path)
         return out
 
-    def chainroute_parallel(self, points: list, map: Map, one_dim=False):
-        buffer = {key: None for key in range(len(points)-1)}
+    def smoothPath(self, path, n=50):
+        endpoints = npappend([path[0][0]], path[:, 1], 0)
+        return evaluate_bezier(endpoints, n).astype(int)
 
-        def tempfunc(n):
-            buffer[n] = self.plan(points[n], points[n+1], map).tolist()
-
-        for i in range(len(points)-1):
-            Thread(target=tempfunc, args=(i,)).start()
-        while None in list(buffer.values()):
-            pass
-
-        if one_dim:
-            out = []
-            for i in list(buffer.values()):
-                out += i
-        else:
-            out = list(buffer.values())
-        # TODO: add simultaneous choice (maybe as a custom object/type?)
-        return out
-
-
-if __name__ == "__main__":
-    from cv2 import imshow, waitKey
-
-    refresh = 1
-    single = 0
-    map = Map("random")
-    image = map.tocv2()
-    imshow("Binary Image", image)
-    planner = RRT()
-    while True:
-        if refresh:
-            image = map.tocv2()
-        if single:
-            start = map.getValidPoint()
-            stop = map.getValidPoint()
-            path = planner.plan(start, stop, map)
-            image = map.drawPoint(image, start)
-            image = map.drawPoint(image, stop)
-            for line in path:
-                map.drawLine(image, line)
-        else:
-            route = map.getValidRoute(5)
-            for point in route:
-                image = map.drawPoint(image, point)
-            chain = planner.chainroute(route, map)
-            for paths in chain:
-                for line in paths:
-                    image = map.drawLine(image, line, random.randint(0, 256, 3).tolist())
+    def find_corridor(self, path, lsr=50, furthest=False, isDots=False):
+        corridors = []
+        for line in path:
+            if not isDots:
+                dotted_line = line2dots(line)
+            else:
+                dotted_line = line
+            corridor = []
+            for dot in dotted_line:
+                x, y = dot
+                obstacle = [0, 0]
+                # TODO: make it so that the returned point is just the one with the furthest obstacle.
+                for i in range(lsr):
+                    if furthest:
+                        if 0 not in obstacle:
+                            break
+                    # Right Sided Distance:
+                    try:  # Save the first obstacle found in lateral search
+                        if obstacle[1] == 0 and self.map.map[x + i][y]:
+                            obstacle[1] = i
+                        # Left Sided Distance
+                        if obstacle[0] == 0 and self.map.map[x - i][y]:
+                            obstacle[0] = i
+                    except IndexError:
+                        pass
+                a, b = obstacle
+                if furthest:
+                    if not a or not b:
+                        corridor.append((x, y))
+                    elif a > b:
+                        corridor.append((x - a, y))
+                    else:
+                        corridor.append((x + b, y))
+                else:
+                    if not a or not b:
+                        corridor.append((x, y))
+                    elif a > b:
+                        corridor.append((x + b, y))
+                    else:
+                        corridor.append((x - a, y))
+            corridors.append(corridor)
+        return corridors
 
 
-        # Display the image using OpenCV
-        imshow("Binary Image", image)
-        waitKey(1)
-        # sleep(1)
+class PathFollow:
+    def __init__(self, path, r=50):
+        # self.path = npappend(path[:, 0], [path[-1][1]], axis=0)
+        self.path = array([points[1] for points in path])
+        self.r = r
+        self.current_waypoint = self.path[0]
+
+    def __call__(self, pose):
+        if self.current_waypoint is None:  # Checking if it has finished
+            return 0, 0, 0
+        # Splitting the pose for convenience
+        pose = array(pose)
+        xy = pose[:2]
+        z = pose[2]
+        print(xy, self.current_waypoint)
+        distance = ecd(xy.astype(float32), self.current_waypoint.astype(float32))
+
+        if distance < self.r:  # Consider as arrived
+            ind = argwhere(self.path == self.current_waypoint).flatten()[0]+1  # Get the index of the next waypoint
+            if ind >= len(self.path):
+                self.current_waypoint = None
+                return 0, 0, 0
+            self.current_waypoint = self.path[ind]  # Set waypoint
+
+        diff_xy = self.current_waypoint - xy # Get point difference
+        # Regulate to always be capped at 1 in any direction
+        norm = np.linalg.norm(diff_xy)
+        reg_xy = diff_xy/norm if norm != 0 else diff_xy  # Note: the abs might fuck things up. TODO: Please check.
+
+        # turn calculations: take for future reference
+        desired_t = getAngle(*diff_xy)  # get angle of point
+        ang_diff = desired_t-z  # get angle_spacing
+        # wrapping
+        while ang_diff > 3.14159265:
+            ang_diff -= 2 * 3.14159265
+        while ang_diff < -3.14159265:
+            ang_diff += 2 * 3.14159265
+
+        # theta_diff = self._turnCalc(pose, reg_xy)
+        return *reg_xy, max(min(ang_diff, 1), -1)
+
+    def getMovement(self, pose):
+        if self.current_waypoint is None:  # Checking if it has finished
+            return 0, 0, 0
+        # Splitting the pose for convenience
+        pose = array(pose)
+        xy = pose[:2]
+        z = pose[2]
+        print(xy, self.current_waypoint)
+
+        # Waypoint picking
+        distance = ecd(xy.astype(float32), self.current_waypoint.astype(float32))
+
+        if distance < self.r:  # Consider as arrived
+            ind = argwhere(self.path == self.current_waypoint).flatten()[0]+1  # Get the index of the next waypoint
+            if ind >= len(self.path):
+                self.current_waypoint = None
+                return 0, 0, 0
+            self.current_waypoint = self.path[ind]  # Set waypoint
+
+        # Movement Calculations
+        diff_xy = self.current_waypoint - xy
+        desired_t = getAngle(*diff_xy)  # get angle of point
+        ang_diff = desired_t - z  # get angle_spacing
+        # wrapping
+        while ang_diff > 3.14159265:
+            ang_diff -= 2 * 3.14159265
+        while ang_diff < -3.14159265:
+            ang_diff += 2 * 3.14159265
+
+        return cos(ang_diff), sin(ang_diff), max(min(ang_diff, 1), -1)
+
+    @staticmethod
+    def _turnCalc(pose, target):
+        # Calculate the desired orientation for the robot to point to the target
+        desired_orientation = getAngle(target[0] - pose[0], target[1] - pose[1])
+        # Calculate the angular difference between the robot's current orientation and the desired orientation
+        angular_difference = desired_orientation - pose[2]
+        # Adjust the angular difference for wrap-around at 2*pi
+        while angular_difference > 3.14159265:
+            angular_difference -= 2 * 3.14159265
+        while angular_difference < -3.14159265:
+            angular_difference += 2 * 3.14159265
+        # Determine the turn command based on the angular difference (reversed directions)
+        return max(min(-angular_difference, 1), -1)

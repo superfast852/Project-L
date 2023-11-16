@@ -34,10 +34,10 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ####    Interfacing:
 - [ ] Encoder Handling
-- [ ] Video Feed
+- [-] Video Feed (we got FastCam handler)
 - [ ] Arm Control
 - [-] Lidar Handling
-- [ ] Drive Communication
+- [X] Drive Communication
 - [X] Drive Handling
 - [X] Voltage Monitoring
 - [X] Ultrasonic Interface
@@ -54,6 +54,8 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [X] SLAM (See [BreezySLAM](https://github.com/simondlevy/breezyslam))
 - [X] Drive Integration
 - [-] HMI-Like Control Interface using Shuffleboard
+- [ ] Pure Pursuit
+- [ ] Test out the code
 
 ####    Expansion:
 - [ ] Find out how to enable expansion
@@ -74,7 +76,7 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [-] A-B Navigation on prerecorded map
 - [-] SLAM
 - [-] Path Planning
-- [ ] Task Creation Framework (Component Interface)
+- [-] Task Creation Framework (Have to properly implement PolyTask)
 
 ---
 ## Links
@@ -83,4 +85,14 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 
 ---
 ## Notes:
-+ None for now.
++ We should be figuring out how to integrate dot-by-dot path following. This allows for bezier curves and smooth paths.
++ allan please add logging throughout the project
+
+
+### Current development:
+- PID (Speed and Positioning)
+- Path Following (Pure Pursuit or Custom Algorithm)
+- PolyTask (da bestest :)
+- Communications (pynetworktables or local server, we'll see)
+- GUI
+- Odometry and Positioning (Unify encoder position with lidar position plz thx :)
