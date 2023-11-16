@@ -1,5 +1,4 @@
 import math
-import time
 from os import system
 from threading import Thread
 import numpy as np
@@ -14,6 +13,7 @@ def find_port_by_vid_pid(vid, pid):
         if port.vid == vid and port.pid == pid:
             return port.device
     return None
+
 
 class XboxController(object):
     MAX_TRIG_VAL = 1024
@@ -177,10 +177,12 @@ def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
 
 # ---- Bezier Curves :) ----
 
+
 def quad_bezier(start, stop, ctrl):
     start, stop, ctrl = np.array([start, stop, ctrl])
     P = lambda t: (1-t)**2 * start + 2 * t * (1-t) * ctrl + t**2 * stop
     return np.array([P(t) for t in np.linspace(0, 1, 50)])
+
 
 # find the a & b points
 def get_bezier_coef(points):

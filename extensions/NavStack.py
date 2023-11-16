@@ -1,8 +1,7 @@
 # NOTE: The code crashing is due to the IDE, not the code itself.
 # SLAM
+# TODO: we import a shit ton of stuff from numpy and then numpy as np. 0 sense.
 from __future__ import annotations
-
-import math
 
 import numpy as np
 from breezyslam.algorithms import RMHC_SLAM

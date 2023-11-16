@@ -35,7 +35,7 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 ####    Interfacing:
 - [ ] Encoder Handling
 - [-] Video Feed (we got FastCam handler)
-- [ ] Arm Control
+- [X] Arm Control
 - [-] Lidar Handling
 - [X] Drive Communication
 - [X] Drive Handling
@@ -58,12 +58,12 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [ ] Test out the code
 
 ####    Expansion:
-- [ ] Find out how to enable expansion
+- [ ] Find out how to enable expansion (the hal is pretty nifty in that sense imo)
 
 ####    Comms:
-- [ ] Local Communication (Drive -> Pi <- PDB)
-- [X] Remote Communication (Pi -> Driver Station)
-- [X] Long-Term Data Storage (Maps, Logs, etc.)
+- [X] Local Communication (Drive -> Pi <- PDB) (It's now all in one (rosmaster board :))
+- [X] Remote Communication (Pi -> Driver Station) (pynetworktables)
+- [X] Long-Term Data Storage (Maps, Logs, etc.) (TODO: create a robot state file to save the bot's state at a certain point)
 
 ####    Base:
 - [X] Get the damn base
@@ -97,3 +97,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - GUI
 - Odometry and Positioning (Unify encoder position with lidar position plz thx :)
 - PLEASE ADD LOGGING AHHHAHHAHAHAH
+- CHECK THE TODOs

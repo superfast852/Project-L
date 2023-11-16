@@ -11,16 +11,8 @@ evdev  # Controller
 ikpy
 
 # Hardware
-adafruit-circuitpython-servokit  # Arm
 rplidar-roboticia  # Lidar
 pyserial  # Serial communication. Used for Rosmaster
-
-# these only apply if not using rosmaster.
-#board  # Communicating with INA219
-#smbus
-#adafruit-circuitpython-ina219
-#imusensor
-
 
 # other
 noise

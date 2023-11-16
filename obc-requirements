@@ -1,0 +1,22 @@
+# Requirements for the On-Board Computer. Preferably a Jetson Orin Nano, btw ;)
+# Check the obc-installer script
+# breezyslam
+# tensorrt
+rplidar-roboticia  # TODO: find a stable version of the rplidar with the iterator trick
+ikpy
+pyserial
+pynetworktables
+torch
+numpy
+opencv-python
+numba
+tqdm
+networkx
+filterpy
+lap
+
+# these only apply if not using rosmaster.
+#board  # Communicating with INA219
+#smbus
+#adafruit-circuitpython-ina219
+#imusensor

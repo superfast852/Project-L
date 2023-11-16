@@ -1,7 +1,7 @@
 import numpy as np
 import numba as nb
 from math import sqrt
-from tqdm import tqdm
+from tqdm import tqdm  # TODO: this is unnecesary. It's just a progress bar that we dont use.
 import networkx as nx
 from typing import Tuple, List
 from collections import defaultdict
