@@ -1,7 +1,7 @@
 # TODO: Add logging, adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
 
 from threading import Thread
-from extensions.tools import getAngle, smoothSpeed, inTolerance, math, find_port_by_vid_pid, np
+from extensions.tools import getAngle, smoothSpeed, inTolerance, math, find_port_by_vid_pid, np, limit
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar
 from itertools import groupby
@@ -12,10 +12,6 @@ import serial
 import threading
 import ikpy.chain
 global_start = time.time()
-
-
-def limit(x, low, high):
-    return min(high, max(x, low))
 
 
 # V1.7.3
@@ -527,7 +523,6 @@ class Rosmaster(object):
 
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
-driver.create_receive_threading()
 
 
 class Drive:  # TODO: Implement self.max properly
@@ -932,6 +927,7 @@ class MecanumKinematics:  # units in centimeters.
         self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4)
         self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4)
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
+        self.vec = (0, 0)
         self.pose = [0, 0, 0]
         self.prev_ticks = [0, 0, 0, 0]
         self.timestampSecondsPrev = None
@@ -942,9 +938,10 @@ class MecanumKinematics:  # units in centimeters.
         while True:
             self.revs = [i/self.tpr for i in driver.encoders]  # this turns the pose into revolution-based
             # This means that 1 turn on a wheel is 10cm of distance. Therefore,
-            self.pose[0] = self.x(self.revs[0], self.revs[1], self.revs[2], self.revs[3])
-            self.pose[1] = self.y(self.revs[0], self.revs[1], self.revs[2], self.revs[3])
-            self.pose[2] = self.w(self.revs[0], self.revs[1], self.revs[2], self.revs[3])
+            self.pose[0] = self.x(*self.revs)
+            self.pose[1] = self.y(*self.revs)
+            self.pose[2] = self.w(*self.revs)
+            self.vec = (math.hypot(*self.pose[:2]), math.atan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
 
     def getTicks(self, x, y, w):  # This already has the right hand rule coordinate system

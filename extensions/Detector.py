@@ -7,14 +7,20 @@ from os import environ
 import tensorrt as trt
 from collections import OrderedDict, namedtuple
 from extensions.tools import coco
-from sort import Sort
+try:
+    from .sort import Sort
+except ImportError:
+    from sort import Sort
 environ['CUDA_MODULE_LOADING'] = 'LAZY'
 
 
 class Detections:
-    def __init__(self, tracker, dets):
+    def __init__(self, tracker, dets, track=True):
         self.dets = dets
         self.tracker = tracker
+        if track:
+            self.track()
+        self.tracked = track
 
     def sort(self, min_conf=0.3, sort_axis=1, reverse=False):  # Sort dets depending on a certain list axis index
         sorted_tup = sorted(self.dets, key=lambda x: x[sort_axis], reverse=reverse)  # Sort list by axis
@@ -27,20 +33,26 @@ class Detections:
 
     def track(self):
         tracks = self.tracker.update(np.array([i[0] for i in self.dets])).astype(int).tolist()  # Feed bboxes to tracker
+        # box, id, conf, class
         final_det = [(track[:4], track[4], self.dets[i][1], self.dets[i][2]) for i, track in
                      enumerate(tracks)]  # Modify original bboxes to include ID
         self.dets = final_det
 
     def draw(self, img, start_det=0, end_det=None):  # Draw Detections
         for det in self.dets[slice(start_det, end_det, None)]:  # Index the desired BBoxes
-            bbox, id, conf, item = det  # unpacks the detections
+            if self.tracked:
+                bbox, id, conf, cls = det  # unpacks the detections
+                text = f"{id}: {coco[cls]}"
+            else:
+                bbox, conf, cls = det
+                text = f"{conf:.3f}: {coco[cls]}"
             cv2.rectangle(img, bbox[:2], bbox[2:], (0, 255, 0), 2)  # draw box
-            cv2.putText(img, f"{id}: {coco[item]}", bbox[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.75,  # write id and class
+            cv2.putText(img, text, bbox[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.75,  # write id and class
                         (255, 255, 0), thickness=2)
 
 
 class Detector:
-    def __init__(self, detector: str, tracker=None, device=torchdevice('cuda:0'), log=1, filter=None):
+    def __init__(self, detector: str, tracker=None, device=torchdevice('cuda:0'), log=1, filter=None, track=True):
         """
         TensorRT-Powered YoloV7 Object Detector Class with SORT Object Tracking.
         :param detector: Path of the .trt or .engine file
@@ -53,6 +65,7 @@ class Detector:
         self.device = device
         self.tracker = tracker if tracker is not None else Sort(60)
         self.filter = filter
+        self.track = track
         logs = (trt.Logger.VERBOSE, trt.Logger.INFO, trt.Logger.WARNING)  # tensorrt logger options
         Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))  # namedtuple for model bindings
         logger = trt.Logger(logs[log if 0<=log<=2 else 2])  # Init logger
@@ -107,7 +120,7 @@ class Detector:
         new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
         dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
 
-        if auto:  # minimum rectangle
+        if auto:
             dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
 
         dw /= 2  # divide padding into 2 sides
@@ -136,38 +149,31 @@ class Detector:
         # Insert image into model
         layers = list(self.binding_addrs.keys())
         self.binding_addrs[layers[0]] = int(frame.data_ptr())
-
         self.context.execute_v2(list(self.binding_addrs.values()))  # Run model
 
         nums, boxes, scores, classes = (self.bindings[i].data for i in layers[1:])  # Get outputs
-
         boxes = self._postprocess(boxes[0, :nums[0][0]])  # Normalize bboxes
         classes = classes[0, :nums[0][0]].tolist()
         scores = [round(i, 4) for i in scores[0, :nums[0][0]].tolist()]
 
         out = tuple(zip(boxes, scores, classes))
-
-        if self.filter is not None:
-            return Detections(self.tracker, tuple(filter(lambda x: x[2] == self.filter, out))) if nums > 0 else None
+        if nums:
+            if self.filter is not None:
+                return Detections(self.tracker, tuple(filter(lambda x: x[2] == self.filter, out)), self.track)
+            else:
+                return Detections(self.tracker, out, self.track)
         else:
-            return Detections(self.tracker, out) if nums > 0 else None
+            return None
 
     def get_dets(self, cap, draw=True, end_det=None):
         dets = self(cap)  # Detect
         if dets is not None:
-            dets.track()  # Track. Judgeable?
             dets.sort()  # sort detections by ID
             if draw:
                 dets.draw(cap, end_det=end_det)
             return dets.dets  # Extract from class
         else:
             return None
-
-    def exit(self):
-        self.context.destroy()
-
-    def __del__(self):
-        self.exit()
 
 
 def frame_debug(frame, px=25):  # Draw crosshairs
@@ -184,12 +190,17 @@ def frame_debug(frame, px=25):  # Draw crosshairs
 
 if __name__ == "__main__":
     from FastCam import Camera
-    model = Detector("../Resources/yolov7-tiny-nms.trt", log=2)
+    from time import time
+    model = Detector("../Resources/yolov7-tiny-nms.trt", log=2, track=False)
 
     cam = Camera().start()
+    frame = cam.read()
 
     while True:
+        start = time()
         frame = cam.read()
-        dets = model.get_dets(frame, True)
+        dets = model(frame)
+        dets.draw(frame)
+        print(f"FPS: {1/(time()-start)}")
         cv2.imshow("hi", frame)
         cv2.waitKey(1)

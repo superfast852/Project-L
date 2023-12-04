@@ -180,35 +180,6 @@ def update_bot_orientation_to_target(robot_x, robot_y, robot_orientation, target
     return z
 
 
-def find_goal_point(path, robot_position, look_ahead_distance):
-    closest_point = None
-    min_distance = float('inf')
-
-    for segment in path:
-        for point in segment:  # Iterate through the sub-points of each segment
-            # Check distance to each point on the path
-            dist = ecd(robot_position, point)  # Euclidean distance.
-
-            # Update closest point if this point is closer
-            if dist < min_distance:
-                min_distance = dist
-                closest_point = point
-
-            # Return the point if it's farther than the look-ahead distance
-            # if dist > look_ahead_distance:
-            #     return point
-
-    # If no point is found that's farther than the look-ahead distance, return the closest point
-    return closest_point
-
-
-def pure_pursuit(path, bot_pose, look_ahead_distance):
-    robot_position = bot_pose[:2]
-    goal_point = find_goal_point(path, robot_position, look_ahead_distance)
-    print(goal_point)
-    return update_bot_orientation_to_target(*bot_pose, goal_point)
-
-
 def rudimentary_movement(x, y, z):
     global robot_x, robot_y, robot_orientation
     robot_x += x*MOVE_SPEED
@@ -238,7 +209,7 @@ while running:
     screen.fill(WHITE)
     drive.comms()
 
-    y, x, z = updateBot()
+    x, y, z = updateBot()
     za = 0
     #z = pure_pursuit(path, (robot_x, robot_y, robot_orientation), look_ahead_distance)
     #print(follower((robot_x, robot_y, robot_orientation)))
@@ -252,8 +223,7 @@ while running:
 
     # do not touch :)
     #drive.cartesian(x, y, turn=z if za == 0 else za)
-    drive.tank(x,z)
-    #rrudimentary_movement(x, y, z)
+    rudimentary_movement(x, y, z)
     # Look Ahead Circle
     pygame.draw.circle(screen, BLACK, (int(robot_x), int(robot_y)), look_ahead_distance,  1)
     # Robot

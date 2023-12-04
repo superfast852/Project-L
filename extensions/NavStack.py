@@ -3,8 +3,6 @@
 # TODO: we import a shit ton of stuff from numpy and then numpy as np. 0 sense.
 from __future__ import annotations
 
-import numpy as np
-from breezyslam.algorithms import RMHC_SLAM
 
 # Path Planning
 try:
@@ -15,9 +13,12 @@ except ModuleNotFoundError:
     from tools import evaluate_bezier, line2dots, ecd, getAngle
 
 # Other utilities
+from breezyslam.algorithms import RMHC_SLAM
 from _pickle import dump, load
 from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, linspace, random, append as npappend, float32
+from numpy.linalg import norm as linalg_norm
 from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle, arrowedLine, imshow, waitKey
+from time import time
 
 
 def pymap(n, func):
@@ -26,6 +27,7 @@ def pymap(n, func):
 
 class Map:
     paths = []
+
     def __init__(self, map):
         # The IR Map is just the RRT Map format.
 
@@ -90,6 +92,20 @@ class Map:
     def update(self, map):
         self.__init__(map)
 
+    def fromSlam(self, map):
+        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
+        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
+        map = ((array(map)-73)/255).reshape(size, size).round()
+        # the threshold value (73) is obtained like this: (thresval-127) where thresval is the cutoff in 0-255 scale.
+        # after subtracting, only values above thresval remain above 0.5. When we round, only those turn to 1.
+        self.map = logical_not(map).astype(int)  # Then we apply a logical not to comply with the RRT map.
+
+    def algocp(self, map):
+        size = int(len(map) ** 0.5)
+        map = (array(map).reshape(size, size) / 255 - 0.284313725).round()
+        # Finally we invert the map, so 0 is free space and 1 is occupied space.
+        self.map = logical_not(map).astype(int)
+
     def toSlam(self):
         return bytearray([(not i)*255 for i in self.map.flatten()])
 
@@ -135,6 +151,9 @@ class Map:
     def getValidRoute(self, n):
         return [self.getValidPoint() for _ in range(n)]
 
+    def _posearrowext(self, pose, r):
+        return pose[:2], (round(pose[0]+r*cos(pose[2])), round(pose[1]+r*sin(pose[2])))
+
     def animate(self, img=None, pose=None, drawLines=True):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
@@ -155,7 +174,8 @@ class Map:
             if pose == "center":
                 arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
             else:
-                arrowedLine(img, pose[0], pose[1], (0, 0, 255), 3)
+                pt1, pt2 = self._posearrowext(pose, 20)
+                arrowedLine(img, pt1, pt2, (0, 0, 255), 3)
         imshow("Map", img)
         waitKey(1)
 
@@ -187,7 +207,7 @@ class Map:
 
 
 class SLAM:
-    def __init__(self, lidar, map_handle=None, map_meters=35, update_map=1):
+    def __init__(self, lidar=None, map_handle=None, map_meters=35, update_map=1):
         self.map = map_handle if map_handle else Map(800)
         if lidar is None:
             from breezyslam.sensors import RPLidarA1
@@ -204,16 +224,18 @@ class SLAM:
     def update(self, distances, angles=None, odometry=None):
         # You can choose what angles to feed the slam algo. That way, if the lidar's blocked, you can filter it.
         if angles is None:
-            angles = linspace(0, 360, len(distances)).tolist()
-        else:
+            angles = list(range(360))  # we assume it's a premade map of 360 degrees (idiotic btw, dont use this.)
+        elif not isinstance(angles, list):
             angles = list(angles)  # Ensure that angles is a list
+
         if len(angles) > len(distances):
             angles = angles[:len(distances)]
         elif len(distances) > len(angles):
             distances = distances[:len(angles)]
         self.slam.update(distances, odometry, angles, self.ShouldUpdate)
-        self.slam.getmap(self.mapbytes)
-        self.map.update(self.mapbytes)
+        # keep in mind that SLAM basically remains running on its own map. So no need to worry about data loss
+        self.slam.getmap(self.mapbytes)  # as seen here, SLAMOps run on self.mapbytes exclusively.
+        self.map.fromSlam(self.mapbytes)  # then, it gets exported to self.map
         self.pose = self.pose2px(self.slam.getpos())
         return self.pose  # SLAM
 
@@ -371,7 +393,7 @@ class PathFollow:
 
         diff_xy = self.current_waypoint - xy # Get point difference
         # Regulate to always be capped at 1 in any direction
-        norm = np.linalg.norm(diff_xy)
+        norm = linalg_norm(diff_xy)
         reg_xy = diff_xy/norm if norm != 0 else diff_xy  # Note: the abs might fuck things up. TODO: Please check.
 
         # turn calculations: take for future reference

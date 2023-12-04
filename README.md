@@ -33,7 +33,7 @@ The main files to run are main.py, which goes in the robot itself, and remote.py
 outputs every power connection. Includes Battery voltage monitoring and cutoff. Uses an arduino to transmit data.
 
 ####    Interfacing:
-- [ ] Encoder Handling
+- [X] Encoder Handling
 - [-] Video Feed (we got FastCam handler)
 - [X] Arm Control
 - [-] Lidar Handling
@@ -98,3 +98,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - Odometry and Positioning (Unify encoder position with lidar position plz thx :)
 - PLEASE ADD LOGGING AHHHAHHAHAHAH
 - CHECK THE TODOs
+- Fix Odometry so that we have a travel and global position.

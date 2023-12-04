@@ -162,6 +162,10 @@ def inTolerance(a, b, tol=1):
     return abs(a - b) <= tol
 
 
+def limit(x, low, high):
+    return min(high, max(x, low))
+
+
 def getCoordinates(angle):
     # Convert the angle from degrees to radians
     angle = math.radians(angle)

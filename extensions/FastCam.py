@@ -8,7 +8,7 @@ class Camera:
         if res is not None:
             self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, res[0])
             self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, res[1])
-        (self.grabbed, self.frame) = self.stream.read()
+        self.grabbed, self.frame = self.stream.read()
         self.stopped = False
         self.main_thread = Thread(target=self.update, daemon=True)
 
@@ -24,7 +24,7 @@ class Camera:
         while True:
             if self.stopped:
                 return
-            (self.grabbed, self.frame) = self.stream.read()
+            self.grabbed, self.frame = self.stream.read()
 
     def read(self):
         try:

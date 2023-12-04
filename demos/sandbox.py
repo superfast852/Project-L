@@ -45,3 +45,4 @@ if __name__ == "__main__":
         b = pf_diff(pose, angle)
         if abs(a-b) > 0.1:
             print(f"Error found. {a} {b} {angle}")
+
