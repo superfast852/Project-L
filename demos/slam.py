@@ -14,7 +14,6 @@ class lidarSim:
                 self.map_meters = 0
         self.count = 0
         self.err = err
-
     def read(self):
         try:
             scan = self.scans[self.count]
@@ -24,7 +23,6 @@ class lidarSim:
             else:
                 self.count = 0
                 scan = self.scans[self.count]
-
         return scan
 
 

@@ -113,7 +113,7 @@ class Rosmaster(object):
         self.__arm_offset_id = 0
         self.__arm_ctrl_enable = True
 
-        self.__battery_voltage = 0
+        self.__battery_voltage = 126.0
 
         self.__akm_def_angle = 100
         self.__akm_readed_angle = False
@@ -798,23 +798,27 @@ class Arm:
 
 
 class Battery:
-    def __init__(self, threshold=11.1, polling_rate=10):
+    def __init__(self, threshold=11.1, polling_rate=10, custom_f=None):
         from threading import Thread
         self.threshold = threshold
         self.polling = polling_rate
-        self.thread = Thread(target=self.check_bat_voltage, daemon=True)
+        if custom_f is None:
+            self.thread = Thread(target=self.check_bat_voltage, daemon=True)
+        else:
+            self.thread = Thread(target=custom_f, daemon=True)
         self.thread.start()
 
     @staticmethod
-    def get_batt():
+    def get_voltage():
         return driver.get_battery_voltage()
 
     def check_bat_voltage(self):
         from _thread import interrupt_main
         from time import sleep
         while True:
-            voltage = self.get_batt()
+            voltage = self.get_voltage()
             if voltage <= self.threshold:
+                print("[CRITICAL] Battery levels too low! Voltage: ", voltage)
                 for i in range(5):
                     driver.set_beep(100)
                     sleep(0.2)

@@ -12,8 +12,8 @@ class BenchBot:
         self.detector = Detector("./Resources/yolov7-tiny-nms.trt", track=False)
         self.cam = Camera()
         self.cam.start()
-        self.map = Map(800)
-        self.rrt = RRT(self.map)
+        self.map = Map("random")
+        self.rrt = RRT(Map("random"))
         self.slam = SLAM(None, self.map)
 
         with open("./Resources/test_scans.pkl", "rb") as f:
@@ -22,7 +22,7 @@ class BenchBot:
         self.frame = np.ones((480, 640, 3))*255
         self.pose = (0, 0, 0)
 
-    def test(self):
+    def test(self):  # 214.31513808763586
         print("[1/4] Benchmarking Object Detection W/O Tracking...")
         det_times = self.measured_loops(self.detect)
         self.detector.track = True
@@ -33,6 +33,7 @@ class BenchBot:
         draw_times = [1/100]
         totals = []
         print(f"[4/4] Benchmarking Consecutive Payload...")
+        self.map = Map("random")
         for i in range(1000):
             print(i)
             start = perf_counter()

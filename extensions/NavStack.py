@@ -7,15 +7,15 @@ from __future__ import annotations
 # Path Planning
 try:
     from extensions.rrt_backend import RRTStarInformed, random_point_og  # TODO: Find something else, dude.
-    from extensions.tools import evaluate_bezier, line2dots, ecd, getAngle
+    from extensions.tools import evaluate_bezier, line2dots, ecd, getAngle, njit
 except ModuleNotFoundError:
     from rrt_backend import RRTStarInformed, random_point_og
-    from tools import evaluate_bezier, line2dots, ecd, getAngle
+    from tools import evaluate_bezier, line2dots, ecd, getAngle, njit
 
 # Other utilities
 from breezyslam.algorithms import RMHC_SLAM
 from _pickle import dump, load
-from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, linspace, random, append as npappend, float32
+from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, round as ndround, random, append as npappend, float32, empty_like, int32
 from numpy.linalg import norm as linalg_norm
 from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle, arrowedLine, imshow, waitKey
 from time import time
@@ -100,10 +100,27 @@ class Map:
         # after subtracting, only values above thresval remain above 0.5. When we round, only those turn to 1.
         self.map = logical_not(map).astype(int)  # Then we apply a logical not to comply with the RRT map.
 
-    def algocp(self, map):
-        size = int(len(map) ** 0.5)
-        map = (array(map).reshape(size, size) / 255 - 0.284313725).round()
-        # Finally we invert the map, so 0 is free space and 1 is occupied space.
+    def jitFromSlam(self, map):
+        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
+        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
+        map = array(map).reshape(size, size)
+        return self._fromSlam(map)
+
+    @staticmethod
+    @njit(nopython=True)
+    def _fromSlam(map: ndarray) -> ndarray:
+        """
+        map -= 73
+        map /= 255
+        out = empty_like(map)
+        ndround(map, 0, out)
+        """
+        return logical_not(ndround((map-73)/255, 0)).astype(int32)
+
+    def fromSlam(self, map):
+        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
+        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
+        map = ((array(map) - 73) / 255).reshape(size, size).round()
         self.map = logical_not(map).astype(int)
 
     def toSlam(self):
@@ -252,7 +269,7 @@ class SLAM:
 
 class RRT:
     # TODO: Deal with dead links. (Dead links are paths that couldnt be found. They're returned as empty lists.)
-    # TODEAL: Make a function to find dead links in a path or chain, i guess
+    # TODO: RRT Freezes sometimes and locks out the program. Fix that. Please.
     def __init__(self, map: Map, n=1000, obstacle_distance=100, goal_radius=50, pbar=False):
         self.n = n
         self.r_rewire = obstacle_distance
