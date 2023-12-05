@@ -7,16 +7,6 @@ import cv2
 from _pickle import load
 from time import perf_counter
 
-"""
-    tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
-  File "/home/gg/PycharmProjects/Project_L/extensions/rrt_backend.py", line 496, in plan
-    xnew = self.sample_all_free()
-  File "/home/gg/PycharmProjects/Project_L/extensions/rrt_backend.py", line 230, in sample_all_free
-    return self.free[np.random.choice(self.free.shape[0])]
-KeyboardInterrupt
-"""
-
-
 class BenchmarkingTest:
     def __init__(self, test_names, test_funcs, verbose_mask, iterations):
         self.test_names = test_names

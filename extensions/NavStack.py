@@ -297,6 +297,7 @@ class RRT:
             if self.planner.collisionfree(self.map.map, start, goal):
                 return array([[start, goal]])
 
+            # TODO: Right here officer. This call can freeze the code randomly both on the Jetson and on the PC.
             tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
             if route is None:
                 print("[ERROR] Planner: No path was found! Try increasing iterations or decreasing rewire radius.")

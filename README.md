@@ -99,3 +99,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - PLEASE ADD LOGGING AHHHAHHAHAHAH
 - CHECK THE TODOs
 - Fix Odometry so that we have a travel and global position.
+- RRT is constantly freezing in the core rrt plan call. Fix it.
