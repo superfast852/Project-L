@@ -18,7 +18,6 @@ from _pickle import dump, load
 from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, round as ndround, random, append as npappend, float32, empty_like, int32
 from numpy.linalg import norm as linalg_norm
 from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle, arrowedLine, imshow, waitKey
-from time import time
 
 
 def pymap(n, func):
@@ -107,7 +106,7 @@ class Map:
         return self._fromSlam(map)
 
     @staticmethod
-    @njit(nopython=True)
+    @njit
     def _fromSlam(map: ndarray) -> ndarray:
         """
         map -= 73
@@ -268,8 +267,6 @@ class SLAM:
 
 
 class RRT:
-    # TODO: Deal with dead links. (Dead links are paths that couldnt be found. They're returned as empty lists.)
-    # TODO: RRT Freezes sometimes and locks out the program. Fix that. Please.
     def __init__(self, map: Map, n=1000, obstacle_distance=100, goal_radius=50, pbar=False):
         self.n = n
         self.r_rewire = obstacle_distance
@@ -280,43 +277,27 @@ class RRT:
 
     def plan(self, start: list | tuple, goal: list | tuple):
         # If it isn't, update the preset object.
-        xgoal = goal
-        xstart = start
-        found = 0
-        lines = []
-        while not found:
-            if not self.map.isValidPoint(xgoal):
-                print(f"[ERROR] Planner: Goal at {xgoal} is an Obstacle!")
-                return None  # None indicates no point could be found. We avoid computation that way.
+        if not self.map.isValidPoint(goal):
+            print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
+            return None
+        elif self.map.isValidPoint(start):
+            print(f"[ERROR] Planner: Start at {start} is an Obstacle!")
+            return None
 
-            # Create planner with latest map.
-            # self.planner.set_og(map.map)
-            # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
-            start = array(xstart[0:2])
-            goal = array(xgoal[0:2])
-            if self.planner.collisionfree(self.map.map, start, goal):
-                return array([[start, goal]])
+        # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
+        start = array(start[0:2])
+        goal = array(goal[0:2])
+        if self.planner.collisionfree(self.map.map, start, goal):
+            return array([[start, goal]])
 
-            # TODO: Right here officer. This call can freeze the code randomly both on the Jetson and on the PC.
-            tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
-            if route is None:
-                print("[ERROR] Planner: No path was found! Try increasing iterations or decreasing rewire radius.")
-                return None
-            lines = self.planner.vertices_as_ndarray(tree, self.planner.route2gv(tree, route))  # Convert route to lines.
-            # The lines are composed by arrays in form [[start point, end point], [start point, end point], ...]
-            # So we'll just extract every end point to get the waypoints.
-            # Remember, these are pixels.
-            del tree, route, start, goal  # Delete planner and map to free up memory.
-            if [] in lines:
-                print("Found Empty Coords!")
-                print(lines)
-            if isinstance(lines, ndarray):
-                if lines.size != 0:
-                    found = 1
-            elif isinstance(lines, list):
-                if lines:
-                    found = 1
-
+        tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
+        lines = self.planner.vertices_as_ndarray(tree, self.planner.route2gv(tree, route))  # Convert route to lines.
+        # The lines are composed by arrays in form [[start point, end point], [start point, end point], ...]
+        # So we'll just extract every end point to get the waypoints.
+        # Remember, these are pixels.
+        if not lines:
+            print("Invalid path found. Please try new coordinates.")
+            return [[start, start]]
         return lines
 
     @staticmethod

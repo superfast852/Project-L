@@ -554,7 +554,6 @@ class RRTStarInformed(RRT):
 
         # build graph
         T = self.build_graph(vgoal, points, parents, vcosts)
-
         return T, vgoal
 
 

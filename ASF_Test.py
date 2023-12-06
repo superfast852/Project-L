@@ -159,7 +159,6 @@ class HardwareTests(BenchmarkingTest):
         time.sleep(0.01)
 
 
-
 if __name__ == "__main__":
     # Pre optimization value: 152.1791710853688 ms
     # POST OPTIMIZATION VALUE: 3.448326349258423 ms
