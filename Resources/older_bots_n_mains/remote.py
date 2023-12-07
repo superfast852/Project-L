@@ -49,8 +49,11 @@ try:
             status.putBoolean("driveMode", drive_mode)
         if reads[5]:
             rrtcoords = planner.plan(pose, (pose[0]+50, pose[1]+50))
-            print(rrtcoords)
-            status.putNumberArray("path", rrtcoords)
+            if planner.isValidPath(rrtcoords):
+                print(rrtcoords)
+                status.putNumberArray("path", rrtcoords)
+            else:
+                print("The path could not be found. Please check your coordinates and try again.")
 
         distances = list(bot.getNumberArray("distances", [0]*10))
         angles = list(bot.getNumberArray("angles", [0]*10))

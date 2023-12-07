@@ -24,12 +24,13 @@ def drawSmoothPath(img, path):
 
 
 while True:
-    start = time()
+    tInit = time()
     img = map.tocv2()
     if single:
+        # start, stop = (1, 450), (0, 0)
         start, stop = map.getValidRoute(2)
         path = planner.plan(start, stop)
-        if path is None or not path:
+        if not planner.isValidPath(path):
             continue
         print(path)
         drawSmoothPath(img, path)
@@ -42,4 +43,4 @@ while True:
             drawSmoothPath(img, path)
         for point in route:
             map.drawPoint(img, point, 4)
-    print(f"Time: {time()-start} seconds.")
+    print(f"Time: {time()-tInit} seconds.")

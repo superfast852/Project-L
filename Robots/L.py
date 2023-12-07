@@ -131,6 +131,8 @@ class Robot:
         # The issue lies in using both lidar pose and kinematic pose.
         # The lidar pose is used to determine our point on the map, and kinematic pose is used in drive.moveTo
         path = self.rrt.plan(self.pose[:2], (x, y))
+        if not self.rrt.isValidPath(path):
+            return []
         self.map.addPath(path)
         ids = []
         for line in path:

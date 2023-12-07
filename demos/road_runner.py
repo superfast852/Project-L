@@ -53,7 +53,7 @@ if __name__ == "__main__":
         for i in range(5):
             map.animate(img)
         route = rrt.plan(start, stop)
-        if route is None:
+        if not rrt.isValidPath(route):
             pass
         else:
             print(len(route))

@@ -195,31 +195,19 @@ class Map:
         imshow("Map", img)
         waitKey(1)
 
-    def addPath(self, route):
+    def addPath(self, route: ndarray):
         # TODO: Fix this. it can be brokey
         # A chain has 3 dimensions, sorta, while a path has 2
         # In a chain, D[0] = path, D[1] = line, D[2] = Pixel
         # In a path,  D[0] = line, D[1] = Pixel
-        j = route[0]  # First Dimension
-        i = 0
-        while isinstance(j, list) or isinstance(j, ndarray):
-            i += 1
-            if j != []:
-                try:
-                    j = j[0]
-                except IndexError:
-                    raise IndexError(f"IndexError! Offending path: {route}")
-            else:
-
-                break
-        if i == 3:
-            for path in route:
-                self.paths.append(path)
-        elif i == 2:
+        # what the fuck is this mess
+        if route.size != 0:
+            return
+        probe = route[0][0][0]
+        if isinstance(probe, (ndarray, list, tuple)):  # multiple path
+            [self.paths.append(i) for i in probe]
+        elif isinstance(probe, (int, float)):  # single path
             self.paths.append(route)
-        else:
-            print("Found dead link.")
-            # raise ValueError("Could not determine if route is a chain or path.")
 
 
 class SLAM:
@@ -275,7 +263,7 @@ class RRT:
         self.map = map
         self.planner = RRTStarInformed(self.map.map, self.n, self.r_rewire, self.r_goal, pbar=self.pbar)
 
-    def plan(self, start: list | tuple, goal: list | tuple):
+    def plan(self, start: list | tuple, goal: list | tuple):  # Note: Remember to use isValidPath after planning!
         # If it isn't, update the preset object.
         if not self.map.isValidPoint(goal):
             print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
@@ -295,9 +283,9 @@ class RRT:
         # The lines are composed by arrays in form [[start point, end point], [start point, end point], ...]
         # So we'll just extract every end point to get the waypoints.
         # Remember, these are pixels.
-        if not lines:
+        if lines.size == 0:
             print("Invalid path found. Please try new coordinates.")
-            return [[start, start]]
+            return array([])
         return lines
 
     @staticmethod
@@ -364,6 +352,10 @@ class RRT:
                         corridor.append((x - a, y))
             corridors.append(corridor)
         return corridors
+
+    @staticmethod
+    def isValidPath(path: ndarray):
+        return isinstance(path, ndarray) and path.size != 0
 
 
 class PathFollow:
