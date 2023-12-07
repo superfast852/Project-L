@@ -27,8 +27,10 @@ while True:
     start = time()
     img = map.tocv2()
     if single:
-        start, stop = (1, 450), (0, 0)
+        start, stop = map.getValidRoute(2)
         path = planner.plan(start, stop)
+        if path is None or not path:
+            continue
         print(path)
         drawSmoothPath(img, path)
     else:

@@ -280,7 +280,7 @@ class RRT:
         if not self.map.isValidPoint(goal):
             print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
             return None
-        elif self.map.isValidPoint(start):
+        elif not self.map.isValidPoint(start):
             print(f"[ERROR] Planner: Start at {start} is an Obstacle!")
             return None
 
