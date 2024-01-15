@@ -1,5 +1,7 @@
 from threading import Thread
 import cv2
+import freenect
+from extensions.tools import depth2xyzuv, uint8
 
 
 class Camera:
@@ -39,16 +41,17 @@ class Camera:
         return self.stream.get(cv2.CAP_PROP_FRAME_WIDTH), self.stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
 
-if __name__ == '__main__':
-    stream = Camera().start()
-    try:
-        while True:
-            frame = stream.read()
-            cv2.imshow('Frame', frame)
+class Kinect:
+    def __init__(self):
+        import freenect
+        print("Freenect is imported!")
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
-    finally:
-        stream.stop()
-        cv2.destroyAllWindows()
+    def getDepthFrame(self):
+        # X: Side-To Side, Y: Up-Down, Z: Depth
+        return freenect.sync_get_depth()[0].astype(uint8)
+
+    def getVideo(self):
+        return cv2.cvtColor(freenect.sync_get_video()[0].astype(uint8), cv2.COLOR_RGB2BGR)
+
+    def setVideoMode(self):
+        freenect.set_video_mode(freenect.RESOLUTION_MEDIUM, freenect.VIDEO_RGB)

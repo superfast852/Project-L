@@ -40,8 +40,13 @@ def img_based():
     else:
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
+    for i in range(50):
+        cv2.imshow("hi", img)
+        cv2.waitKey(1)
+
     # Convert to binary
     img_bin = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY)[1]
+    print(img_bin.shape)
     bin_map = img_bin//255
 
     skel, dist = centerline(img_bin, return_dist=True)

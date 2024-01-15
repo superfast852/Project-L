@@ -99,3 +99,4 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - PLEASE ADD LOGGING AHHHAHHAHAHAH
 - CHECK THE TODOs
 - Fix Odometry so that we have a travel and global position.
+- Need to re-do the Map class, we seem to be getting issues with visualization and operation

@@ -4,6 +4,13 @@ import numpy as np
 from matplotlib.animation import FuncAnimation, FFMpegFileWriter
 from matplotlib import pyplot as plt
 
+"""
+This code is a simple animation of a linear movement of the ROT3U Robot Arm. 
+You can choose between vectorial or cartesian translation
+TODO: work with quaternions, SE3, and others.
+Credits to AutomaticAddison, the guy who made the URDF Builder, and my dog
+"""
+
 chain = ikpy.chain.Chain.from_urdf_file("../Resources/arm.urdf", active_links_mask=[bool(i%2) for i in range(10)])
 
 def p2v(coords):

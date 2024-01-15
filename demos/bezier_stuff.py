@@ -2,6 +2,10 @@
 # To do this, add the closest points to obstacles as control points.
 # NOTE: The bezier curve don't seem to work under bresenham lines.
 
+"""
+This code is a test on a Bezier curve-based line parsing algorithm, seen in drawSmoothPath
+"""
+
 from extensions.NavStack import RRT, Map
 from time import time, sleep
 single = 1

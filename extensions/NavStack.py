@@ -94,31 +94,6 @@ class Map:
     def fromSlam(self, map):
         size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        map = ((array(map)-73)/255).reshape(size, size).round()
-        # the threshold value (73) is obtained like this: (thresval-127) where thresval is the cutoff in 0-255 scale.
-        # after subtracting, only values above thresval remain above 0.5. When we round, only those turn to 1.
-        self.map = logical_not(map).astype(int)  # Then we apply a logical not to comply with the RRT map.
-
-    def jitFromSlam(self, map):
-        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
-        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        map = array(map).reshape(size, size)
-        return self._fromSlam(map)
-
-    @staticmethod
-    @njit
-    def _fromSlam(map: ndarray) -> ndarray:
-        """
-        map -= 73
-        map /= 255
-        out = empty_like(map)
-        ndround(map, 0, out)
-        """
-        return logical_not(ndround((map-73)/255, 0)).astype(int32)
-
-    def fromSlam(self, map):
-        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
-        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
         map = ((array(map) - 73) / 255).reshape(size, size).round()
         self.map = logical_not(map).astype(int)
 
@@ -201,13 +176,15 @@ class Map:
         # In a chain, D[0] = path, D[1] = line, D[2] = Pixel
         # In a path,  D[0] = line, D[1] = Pixel
         # what the fuck is this mess
-        if route.size != 0:
-            return
-        probe = route[0][0][0]
-        if isinstance(probe, (ndarray, list, tuple)):  # multiple path
-            [self.paths.append(i) for i in probe]
-        elif isinstance(probe, (int, float)):  # single path
+
+        try:
+            int(route[0][0][0])  # check if we can index that deep and the value is a number
+            # If that happens, we are sure it's a path
             self.paths.append(route)
+        except TypeError:  # If we could not convert to an integer,
+            [self.paths.append(i) for i in route]  # It means that route[0][0][0] was an array.
+        except IndexError:  # If the probe was not successful, it's invalid.
+            print("Empty or Invalid path provided.")
 
 
 class SLAM:
@@ -293,6 +270,10 @@ class RRT:
         lines = array(lines)
         return npappend([lines[0][0]], lines[:, 1], 0)
 
+    @staticmethod
+    def endpointsToPath(endpoints):
+        return array([[endpoints[i], endpoints[i+1]] for i in range(len(endpoints)-1)])
+
     # Note: Either im a shitty dev or sequential is faster than parallel
     def chainroute(self, points: list, one_dim=False):
         out = []
@@ -355,7 +336,7 @@ class RRT:
 
     @staticmethod
     def isValidPath(path: ndarray):
-        return isinstance(path, ndarray) and path.size != 0
+        return isinstance(path, ndarray) and path.size > 0
 
 
 class PathFollow:
