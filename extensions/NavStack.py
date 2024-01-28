@@ -1,12 +1,11 @@
 # NOTE: The code crashing is due to the IDE, not the code itself.
 # SLAM
-# TODO: we import a shit ton of stuff from numpy and then numpy as np. 0 sense.
 from __future__ import annotations
 
 
 # Path Planning
 try:
-    from extensions.rrt_backend import RRTStarInformed, random_point_og  # TODO: Find something else, dude.
+    from extensions.rrt_backend import RRTStarInformed, random_point_og
     from extensions.tools import evaluate_bezier, line2dots, ecd, getAngle, njit
 except ModuleNotFoundError:
     from rrt_backend import RRTStarInformed, random_point_og
@@ -15,10 +14,8 @@ except ModuleNotFoundError:
 # Other utilities
 from breezyslam.algorithms import RMHC_SLAM
 from _pickle import dump, load
-from numpy import array, argwhere, logical_not, ndarray, max, load, rot90, uint8, cos, sin, round as ndround, random, append as npappend, float32, empty_like, int32
-from numpy.linalg import norm as linalg_norm
-from cv2 import cvtColor, COLOR_GRAY2BGR, line as cvline, circle as cvcircle, arrowedLine, imshow, waitKey
-
+import numpy as np
+import cv2
 
 def pymap(n, func):
     return map(func, n)
@@ -43,14 +40,14 @@ class Map:
                     values = load(f, allow_pickle=True)
                 if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
                     meters, bytearr = values
-                    map = array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
-                    for index in argwhere(map < 200):  # First we pull down the readings below quality.
+                    map = np.array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
+                    for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
                         map[index[0], index[1]] = 0
-                    for index in argwhere(
+                    for index in np.argwhere(
                             map >= 200):  # Then we pull up the readings above quality and convert to 1.
                         map[index[0], index[1]] = 1
                     # Finally we invert the map, so 0 is free space and 1 is occupied space.
-                    self.map = logical_not(map).astype(int)
+                    self.map = np.logical_not(map).astype(int)
                     self.map_meters = meters
                 else:
                     self.__init__(values)
@@ -60,30 +57,30 @@ class Map:
         elif isinstance(map, bytearray):
             # convert from slam to IR
             # Slam maps are bytearrays that represent the SLAM Calculated map. Higher the pixel value, clearer it is.
-            map = array(map).reshape(int(len(map) ** 0.5), int(len(map) ** 0.5))
-            for index in argwhere(map < 200):  # First we pull down the readings below quality.
+            map = np.array(map).reshape(int(len(map) ** 0.5), int(len(map) ** 0.5))
+            for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
                 map[index[0], index[1]] = 0
-            for index in argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
+            for index in np.argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
                 map[index[0], index[1]] = 1
             # Finally we invert the map, so 0 is free space and 1 is occupied space.
-            self.map = logical_not(map).astype(int)
+            self.map = np.logical_not(map).astype(int)
 
-        elif isinstance(map, ndarray):
+        elif isinstance(map, np.ndarray):
             # convert from rrt to IR
             # RRT Maps are numpy arrays that RRT uses to calculate a route to a point. 1 represents an obstacle.
             if max(map) > 1:
-                for index in argwhere(map < 200):  # First we pull down the readings below quality.
+                for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
                     map[index[0], index[1]] = 0
-                for index in argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
+                for index in np.argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
                     map[index[0], index[1]] = 1
                 # Finally we invert the map, so 0 is free space and 1 is occupied space.
-                self.map = logical_not(map).astype(int)
+                self.map = np.logical_not(map).astype(int)
             else:  # If we get an IR Map, we just use it.
                 self.map = map
 
         elif isinstance(map, int):
             # generate a blank IR Map
-            self.map = array([0]*map**2).reshape(map, map)
+            self.map = np.array([0]*map**2).reshape(map, map)
 
         else:
             raise ValueError("Map format unidentified.")
@@ -97,8 +94,8 @@ class Map:
     def fromSlam(self, map):
         size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        map = ((array(map) - 73) / 255).reshape(size, size).round()
-        self.map = logical_not(map).astype(int)
+        map = ((np.array(map) - 73) / 255).reshape(size, size).round()
+        self.map = np.logical_not(map).astype(int)
 
     def toSlam(self):
         return bytearray([(not i)*255 for i in self.map.flatten()])
@@ -123,11 +120,11 @@ class Map:
         return len(self.map)
 
     def tocv2(self, invert=True):
-        map = self.map if not invert else logical_not(self.map)
-        return cvtColor(rot90(map).astype(uint8) * 255, COLOR_GRAY2BGR)
+        map = self.map if not invert else np.logical_not(self.map)
+        return cv2.cvtColor(np.rot90(map).astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
 
     def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
-        return cvcircle(img, (point[0], self.map.shape[0]-point[1]), r, c, t)
+        return cv2.circle(img, (point[0], self.map.shape[0]-point[1]), r, c, t)
 
     def drawPx(self, img, point, c=(0, 0, 255), r=1):
         for a in range(-r, r):
@@ -136,7 +133,7 @@ class Map:
         return img
 
     def drawLine(self, img, line, c=(0, 255, 0), **kwargs):
-        return cvline(img, (line[0][0], self.map.shape[0]-line[0][1]),
+        return cv2.line(img, (line[0][0], self.map.shape[0]-line[0][1]),
                         (line[1][0], self.map.shape[0]-line[1][1]), c, **kwargs)
 
     def drawLineOfDots(self, img, line, c=(0, 255, 0)):
@@ -146,7 +143,7 @@ class Map:
         return [self.getValidPoint() for _ in range(n)]
 
     def _posearrowext(self, pose, r):
-        return pose[:2], (round(pose[0]+r*cos(pose[2])), round(pose[1]+r*sin(pose[2])))
+        return pose[:2], (round(pose[0]+r*np.cos(pose[2])), round(pose[1]+r*np.sin(pose[2])))
 
     def animate(self, img=None, pose=None, drawLines=True):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
@@ -161,25 +158,19 @@ class Map:
                 if path:
                     img = self.drawPoint(img, path[0][0], 4)
                     img = self.drawPoint(img, path[-1][1], 4)
-                    color = random.randint(0, 256, 3).tolist()
+                    color = np.random.randint(0, 256, 3).tolist()
                     for line in path:
                         img = self.drawLine(img, line, color)
         if pose is not None:
             if pose == "center":
-                arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
+                cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
             else:
                 pt1, pt2 = self._posearrowext(pose, 20)
-                arrowedLine(img, pt1, pt2, (0, 0, 255), 3)
-        imshow("Map", img)
-        waitKey(1)
+                cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), 3)
+        cv2.imshow("Map", img)
+        cv2.waitKey(1)
 
-    def addPath(self, route: ndarray):
-        # TODO: Fix this. it can be brokey
-        # A chain has 3 dimensions, sorta, while a path has 2
-        # In a chain, D[0] = path, D[1] = line, D[2] = Pixel
-        # In a path,  D[0] = line, D[1] = Pixel
-        # what the fuck is this mess
-
+    def addPath(self, route: np.ndarray):
         try:
             if route is None:
                 return
@@ -233,22 +224,21 @@ class SLAM:
 
     def pose2cv2(self, size=10):  # TF was i tryna do?
         x, y, r = self.pose  # in px
-        return (x, y), (int(x + size * cos(r)), int(y + size * sin(r)))
+        return (x, y), (int(x + size * np.cos(r)), int(y + size * np.sin(r)))
 
 
 class RRT:
-    def __init__(self, map: Map, n=1000, obstacle_distance=100, goal_radius=50, pbar=False):
+    def __init__(self, map: Map, n=1000, obstacle_distance=100, goal_radius=50):
         self.n = n
         self.r_rewire = obstacle_distance
         self.r_goal = goal_radius
-        self.pbar = pbar
         self.map = map
-        self.planner = RRTStarInformed(self.map.map, self.n, self.r_rewire, self.r_goal, pbar=self.pbar)
+        self.planner = RRTStarInformed(self.map.map, self.n, self.r_rewire, self.r_goal)
 
     def plan(self, start: list | tuple, goal: list | tuple):  # Note: Remember to use isValidPath after planning!
         # If it isn't, update the preset object.
-        start = array(start[0:2])
-        goal = array(goal[0:2])
+        start = np.array(start[0:2])
+        goal = np.array(goal[0:2])
         if not self.map.isValidPoint(goal):
             print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
             return None
@@ -258,7 +248,7 @@ class RRT:
 
         # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
         if self.planner.collisionfree(self.map.map, start, goal):
-            return array([[start, goal]])
+            return np.array([[start, goal]])
 
         tree, route = self.planner.plan(start, goal)  # Execute RRT* Informed.
         lines = self.planner.vertices_as_ndarray(tree, self.planner.route2gv(tree, route))  # Convert route to lines.
@@ -267,17 +257,17 @@ class RRT:
         # Remember, these are pixels.
         if lines.size == 0:
             print("Invalid path found. Please try new coordinates.")
-            return array([])
+            return np.empty(0)
         return lines
 
     @staticmethod
     def getEndPoints(lines):
-        lines = array(lines)
-        return npappend([lines[0][0]], lines[:, 1], 0)
+        lines = np.array(lines)
+        return np.append([lines[0][0]], lines[:, 1], 0)
 
     @staticmethod
     def endpointsToPath(endpoints):
-        return array([[endpoints[i], endpoints[i+1]] for i in range(len(endpoints)-1)])
+        return np.array([[endpoints[i], endpoints[i+1]] for i in range(len(endpoints)-1)])
 
     # Note: Either im a shitty dev or sequential is faster than parallel
     def chainroute(self, points: list, one_dim=False):
@@ -293,139 +283,9 @@ class RRT:
         return out
 
     def smoothPath(self, path, n=50):
-        endpoints = npappend([path[0][0]], path[:, 1], 0)
+        endpoints = np.append([path[0][0]], path[:, 1], 0)
         return evaluate_bezier(endpoints, n).astype(int)
 
-    def find_corridor(self, path, lsr=50, furthest=False, isDots=False):
-        corridors = []
-        for line in path:
-            if not isDots:
-                dotted_line = line2dots(line)
-            else:
-                dotted_line = line
-            corridor = []
-            for dot in dotted_line:
-                x, y = dot
-                obstacle = [0, 0]
-                # TODO: make it so that the returned point is just the one with the furthest obstacle.
-                for i in range(lsr):
-                    if furthest:
-                        if 0 not in obstacle:
-                            break
-                    # Right Sided Distance:
-                    try:  # Save the first obstacle found in lateral search
-                        if obstacle[1] == 0 and self.map.map[x + i][y]:
-                            obstacle[1] = i
-                        # Left Sided Distance
-                        if obstacle[0] == 0 and self.map.map[x - i][y]:
-                            obstacle[0] = i
-                    except IndexError:
-                        pass
-                a, b = obstacle
-                if furthest:
-                    if not a or not b:
-                        corridor.append((x, y))
-                    elif a > b:
-                        corridor.append((x - a, y))
-                    else:
-                        corridor.append((x + b, y))
-                else:
-                    if not a or not b:
-                        corridor.append((x, y))
-                    elif a > b:
-                        corridor.append((x + b, y))
-                    else:
-                        corridor.append((x - a, y))
-            corridors.append(corridor)
-        return corridors
-
     @staticmethod
-    def isValidPath(path: ndarray):
-        return isinstance(path, ndarray) and path.size > 0
-
-
-class PathFollow:
-    def __init__(self, path, r=50):
-        # self.path = npappend(path[:, 0], [path[-1][1]], axis=0)
-        self.path = array([points[1] for points in path])
-        self.r = r
-        self.current_waypoint = self.path[0]
-
-    def __call__(self, pose):
-        if self.current_waypoint is None:  # Checking if it has finished
-            return 0, 0, 0
-        # Splitting the pose for convenience
-        pose = array(pose)
-        xy = pose[:2]
-        z = pose[2]
-        print(xy, self.current_waypoint)
-        distance = ecd(xy.astype(float32), self.current_waypoint.astype(float32))
-
-        if distance < self.r:  # Consider as arrived
-            ind = argwhere(self.path == self.current_waypoint).flatten()[0]+1  # Get the index of the next waypoint
-            if ind >= len(self.path):
-                self.current_waypoint = None
-                return 0, 0, 0
-            self.current_waypoint = self.path[ind]  # Set waypoint
-
-        diff_xy = self.current_waypoint - xy # Get point difference
-        # Regulate to always be capped at 1 in any direction
-        norm = linalg_norm(diff_xy)
-        reg_xy = diff_xy/norm if norm != 0 else diff_xy  # Note: the abs might fuck things up. TODO: Please check.
-
-        # turn calculations: take for future reference
-        desired_t = getAngle(*diff_xy)  # get angle of point
-        ang_diff = desired_t-z  # get angle_spacing
-        # wrapping
-        while ang_diff > 3.14159265:
-            ang_diff -= 2 * 3.14159265
-        while ang_diff < -3.14159265:
-            ang_diff += 2 * 3.14159265
-
-        # theta_diff = self._turnCalc(pose, reg_xy)
-        return *reg_xy, max(min(ang_diff, 1), -1)
-
-    def getMovement(self, pose):
-        if self.current_waypoint is None:  # Checking if it has finished
-            return 0, 0, 0
-        # Splitting the pose for convenience
-        pose = array(pose)
-        xy = pose[:2]
-        z = pose[2]
-        print(xy, self.current_waypoint)
-
-        # Waypoint picking
-        distance = ecd(xy.astype(float32), self.current_waypoint.astype(float32))
-
-        if distance < self.r:  # Consider as arrived
-            ind = argwhere(self.path == self.current_waypoint).flatten()[0]+1  # Get the index of the next waypoint
-            if ind >= len(self.path):
-                self.current_waypoint = None
-                return 0, 0, 0
-            self.current_waypoint = self.path[ind]  # Set waypoint
-
-        # Movement Calculations
-        diff_xy = self.current_waypoint - xy
-        desired_t = getAngle(*diff_xy)  # get angle of point
-        ang_diff = desired_t - z  # get angle_spacing
-        # wrapping
-        while ang_diff > 3.14159265:
-            ang_diff -= 2 * 3.14159265
-        while ang_diff < -3.14159265:
-            ang_diff += 2 * 3.14159265
-
-        return cos(ang_diff), sin(ang_diff), max(min(ang_diff, 1), -1)
-
-    @staticmethod
-    def _turnCalc(pose, target):
-        # Calculate the desired orientation for the robot to point to the target
-        desired_orientation = getAngle(target[0] - pose[0], target[1] - pose[1])
-        # Calculate the angular difference between the robot's current orientation and the desired orientation
-        angular_difference = desired_orientation - pose[2]
-        # Adjust the angular difference for wrap-around at 2*pi
-        while angular_difference > 3.14159265:
-            angular_difference -= 2 * 3.14159265
-        while angular_difference < -3.14159265:
-            angular_difference += 2 * 3.14159265
-        # Determine the turn command based on the angular difference (reversed directions)
-        return max(min(-angular_difference, 1), -1)
+    def isValidPath(path: np.ndarray):
+        return isinstance(path, np.ndarray) and path.size > 0

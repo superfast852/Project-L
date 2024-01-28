@@ -697,19 +697,6 @@ class MPU:
         return driver.get_accelerometer_data()
 
 
-class Ultrasonic:  # TODO: Implement this.
-    # TODO: Check if it works.
-    def __init__(self, echo, trig):  # 11, 8
-        self.echo = echo
-        self.trig = trig
-
-    def _get_val(self):
-        return None
-
-    def read(self, measures=5):
-        return sum([self._get_val() for _ in range(measures)])/measures
-
-
 class Arm:
     def __init__(self, num_servos=6, lapse=1, steps=100):
         from adafruit_servokit import ServoKit
@@ -920,6 +907,11 @@ class RP_A1(RPLidarA1):
 
 # Possible conflict here. The self.pose is different from the pose retrieved by the lidar, yet the same name.
 # TODO: make a tick-to-lidar conversion thingamajig
+# TODO: Actually, get the cart working and rework the entire kinematics system.
+# The issue is directional permanence. The functions don't directly translate to position.
+# One easy change is adding x += x_change * cos(theta) and y += y_change * sin(theta) to the kinematics.
+# This basically makes the x and y axis change according to the current orientation of the bot.
+# Actual testing is required.
 class MecanumKinematics:  # units in centimeters.
     # lx, ly = 13.2, 8.5
     def __init__(self, radius=10, wheel2centerDistance=21.7):

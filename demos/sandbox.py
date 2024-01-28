@@ -27,7 +27,7 @@ def pf_diff(pose, target):
     diff_xy = target - xy  # Get point difference
     # Regulate to always be capped at 1 in any direction
     norm = np.linalg.norm(diff_xy)
-    reg_xy = diff_xy / norm if norm != 0 else diff_xy  # Note: the abs might fuck things up. TODO: Please check.
+    reg_xy = diff_xy / norm if norm != 0 else diff_xy
     desired_theta = getAngle(*reg_xy)
     theta_diff = desired_theta - z
 

@@ -1,5 +1,4 @@
-# TODO: Reimplement camview, faster comms, clean up, maybe redo? TRAIN MODEL
-# TODO: Directly implement SORT to the Detector class. Let's not lie to ourselves.
+# IDEA: Directly implement SORT to the Detector class. Let's not lie to ourselves.
 from torch import device as torchdevice, from_numpy, tensor, randn
 import numpy as np
 import cv2

@@ -4,8 +4,7 @@ from skimage import morphology
 import numpy as np
 from _pickle import load
 
-# TODO: Turn this into a library. Please.
-# TODO: Turn centerline pixel coords into lines.
+# Turn this into a library. Please. Actually, no. The dependency cost w.r.t. usage is too high
 
 
 def centerline(bin, type=int, return_dist=False):

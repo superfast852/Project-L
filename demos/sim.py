@@ -2,7 +2,6 @@ import pygame
 import math
 import numpy as np
 from extensions.tools import getAngle, line2dots
-from extensions.NavStack import PathFollow
 
 # Initialize pygame
 pygame.init()
@@ -29,7 +28,7 @@ robot_y = SCREEN_HEIGHT // 2
 robot_orientation = 0  # Angle in radians
 
 
-class Drive:  # TODO: Implement self.max properly
+class Drive:
     max_speed = 1.0  # Measure this later.
 
     def __init__(self, max_speed=1):
@@ -54,9 +53,6 @@ class Drive:  # TODO: Implement self.max properly
             self.lf, self.lb, self.rf, self.rb = 0, 0, 0, 0
             return 0, 0, 0, 0
         rawTheta = getAngle(x, -y)
-        # TODO: this fitting is broken. Please fix.
-        #theta = rawTheta - (math.pi / 2) if rawTheta > (math.pi / 2) else (2 * math.pi) - rawTheta
-        #print(math.degrees(rawTheta), theta)
         theta = rawTheta
 
         sin = math.sin(theta+math.pi/4)
@@ -198,7 +194,6 @@ FPS = 60  # Target frames per second
 path = [[[400, 300], [0, 0]], [[0, 0], [0, 600]], [[0, 600], [800, 600]]]
 dotted = [line2dots(line) for line in path]
 look_ahead_distance = 40
-follower = PathFollow(path)
 running = True
 while running:
     for event in pygame.event.get():

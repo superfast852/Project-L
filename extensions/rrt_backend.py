@@ -1,7 +1,6 @@
 import numpy as np
 import numba as nb
 from math import sqrt
-from tqdm import tqdm  # TODO: this is unnecesary. It's just a progress bar that we dont use.
 import networkx as nx
 from typing import Tuple, List
 from collections import defaultdict
@@ -47,10 +46,7 @@ class RRT(object):
         og: np.ndarray,
         n: int,
         costfn: callable = None,
-        pbar: bool = True,
     ):
-        # whether to display a progress bar
-        self.pbar = pbar
         # array containing vertex points
         self.n = n
         # occupancyGrid free space
@@ -367,9 +363,8 @@ class RRTStarInformed(RRT):
         r_rewire: float,
         r_goal: float,
         costfn: callable = None,
-        pbar: bool = True,
     ):
-        super().__init__(og, n, costfn=costfn, pbar=pbar)
+        super().__init__(og, n, costfn=costfn)
         self.r_rewire = r_rewire
         self.r_goal = r_goal
         # store the ellipses for plotting later
@@ -484,13 +479,8 @@ class RRTStarInformed(RRT):
         vcosts[0] = 0
         parents[0] = None
         i, j = 0, 1
-        if self.pbar:
-            pbar = tqdm(total=self.n)
 
         while i < self.n:
-            if self.pbar:
-                pbar.update(1)
-
             # either sample from free or sample from ellipse depending on vsoln
             if len(vsoln) == 0:
                 xnew = self.sample_all_free()

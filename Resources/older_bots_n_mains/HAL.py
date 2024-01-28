@@ -1,6 +1,6 @@
 """HAL: Hardware Abstraction Layer"""
-# TODO: Integrate MecanumKinematics (replaces Positioning) and Odometry
-
+## THIS CODE IS DEPRECATED. ITS ONLY HERE FOR REFERENCE.
+## The RM_HAL is the current version, since the driver board handles motors and IMU.
 import time
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, inTolerance, math
@@ -36,7 +36,7 @@ except ImportError:
     io = io()
 
 
-class Drive:  # TODO: Implement self.max properly
+class Drive:
     def __init__(self, com='/dev/ttyACM0', baud=115200, max_speed=1):
         self.lf = 0
         self.rf = 0
@@ -88,7 +88,6 @@ class Drive:  # TODO: Implement self.max properly
         return lf, rf, lb, rb
 
     def tank(self, x, y, power=1, turn=0):
-        # TODO: Add turn directly onto function. Add Collision Detection.
         # collisions = self.collision_fn(self.arg)
         if power != 0:
             # The turn operation is sus. It will override power
@@ -227,7 +226,6 @@ class MPU:
 
 
 class Ultrasonic:
-    # TODO: Check if it works.
     def __init__(self, echo, trig):  # 11, 8
         self.echo = echo
         self.trig = trig
@@ -308,7 +306,6 @@ class Arm:
 
 
 class Battery:
-    # TODO: check if this works.
     def __init__(self):
         from adafruit_ina219 import INA219
         import board
@@ -404,7 +401,7 @@ class RP_A1(RPLidarA1):
             return [(readings[i][0], (readings[i][1] + self.rotation + 360) % 360) for i in range(len(readings))]
 
 
-class MecanumKinematics:  # TODO: ADD THIS PROPERLY
+class MecanumKinematics:
     def __init__(self, ticks, radius=1, wheel2centerDistance=1):
         self.r = radius
         self.ticks = list(ticks)
