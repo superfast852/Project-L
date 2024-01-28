@@ -27,9 +27,9 @@ def pymap(n, func):
 class Map:
     paths = []
 
-    def __init__(self, map):
+    def __init__(self, map, map_meters=35):
         # The IR Map is just the RRT Map format.
-
+        self.map_meters = None
         if isinstance(map, str):
             if map.lower() == "random":
                 # Get a randomly generated map for testing.
@@ -37,11 +37,12 @@ class Map:
                     self.map = load("./Resources/map.npy")  # Formatted as an RRT Map.
                 except FileNotFoundError:
                     self.map = load("../Resources/map.npy")
+                self.map_meters = 35
             elif "pkl" in map:
                 with open(map, "rb") as f:
                     values = load(f, allow_pickle=True)
                 if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
-                    size, bytearr = values
+                    meters, bytearr = values
                     map = array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
                     for index in argwhere(map < 200):  # First we pull down the readings below quality.
                         map[index[0], index[1]] = 0
@@ -50,7 +51,7 @@ class Map:
                         map[index[0], index[1]] = 1
                     # Finally we invert the map, so 0 is free space and 1 is occupied space.
                     self.map = logical_not(map).astype(int)
-                    self.map_size = size
+                    self.map_meters = meters
                 else:
                     self.__init__(values)
             else:
@@ -87,6 +88,8 @@ class Map:
         else:
             raise ValueError("Map format unidentified.")
         self.map_center = [i//2 for i in self.map.shape]
+        if self.map_meters is None:
+            self.map_meters = map_meters
 
     def update(self, map):
         self.__init__(map)
@@ -178,6 +181,8 @@ class Map:
         # what the fuck is this mess
 
         try:
+            if route is None:
+                return
             int(route[0][0][0])  # check if we can index that deep and the value is a number
             # If that happens, we are sure it's a path
             self.paths.append(route)
@@ -188,7 +193,7 @@ class Map:
 
 
 class SLAM:
-    def __init__(self, lidar=None, map_handle=None, map_meters=35, update_map=1):
+    def __init__(self, lidar=None, map_handle=None, update_map=1):
         self.map = map_handle if map_handle else Map(800)
         if lidar is None:
             from breezyslam.sensors import RPLidarA1
@@ -198,8 +203,8 @@ class SLAM:
         self.map_size = len(self.map)  # Ensure it's actually an integer, might've been calculated.
         self.pose = (0, 0, 0)
         # Slam Preparation
-        self.ratio = map_meters*1000 / self.map_size  # For converting MM to px.
-        self.slam = RMHC_SLAM(lidar, self.map_size, map_meters)
+        self.ratio = self.map.map_meters*1000 / self.map_size  # For converting MM to px.
+        self.slam = RMHC_SLAM(lidar, self.map_size, self.map.map_meters)
         self.slam.setmap(self.mapbytes)
 
     def update(self, distances, angles=None, odometry=None):
@@ -242,6 +247,8 @@ class RRT:
 
     def plan(self, start: list | tuple, goal: list | tuple):  # Note: Remember to use isValidPath after planning!
         # If it isn't, update the preset object.
+        start = array(start[0:2])
+        goal = array(goal[0:2])
         if not self.map.isValidPoint(goal):
             print(f"[ERROR] Planner: Goal at {goal} is an Obstacle!")
             return None
@@ -250,8 +257,6 @@ class RRT:
             return None
 
         # Planner asks for coords to be arrays, so we convert them. Also make sure they're 2D.
-        start = array(start[0:2])
-        goal = array(goal[0:2])
         if self.planner.collisionfree(self.map.map, start, goal):
             return array([[start, goal]])
 

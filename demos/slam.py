@@ -30,7 +30,7 @@ lidar = lidarSim()
 map = Map(800)
 slam = SLAM(None, map, lidar.map_meters if lidar.map_meters != 0 else 35)
 for i in range(len(lidar.scans)):
-    print(slam.update(lidar.read(), None))
+    print(slam.px2pose(slam.update(lidar.read(), None)))
     img = map.tocv2(False)
     bot = slam.pose2cv2()
     img = cv2.arrowedLine(img, bot[0], bot[1], (0, 0, 255), 2)

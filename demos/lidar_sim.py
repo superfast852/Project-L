@@ -56,11 +56,15 @@ FPS = 120  # Target frames per second
 target_position = None
 angle = math.pi/4
 line = True
+permanence = True
 running = True
 start = time()
 frame_counter = 0
 while running:
     frame_counter += 1
+    if not permanence:
+        if frame_counter % 10 == 0:
+            empty = np.zeros((mapgen.map.shape[0], mapgen.map.shape[1]))+1
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -70,6 +74,10 @@ while running:
         keys = pygame.key.get_pressed()
         if keys[pygame.K_SPACE]:
             line = not line
+        if keys[pygame.K_r]:
+            empty = np.zeros((mapgen.map.shape[0], mapgen.map.shape[1]))+1
+        if keys[pygame.K_p]:
+            permanence = not permanence
     # Clear the screen
     screen.fill(WHITE)
     screen.blit(pygame.surfarray.make_surface(norm2pg(empty)), (0, 0))
@@ -89,5 +97,6 @@ while running:
 
     # Cap the frame rate
     clock.tick(FPS)
+
 
 pygame.quit()

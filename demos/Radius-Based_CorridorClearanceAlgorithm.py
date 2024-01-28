@@ -136,6 +136,7 @@ while True:
     map.paths = []
     tInit = time()
     img = map.tocv2()
+
     if single:
         # start, stop = (1, 450), (0, 0)
         start, stop = map.getValidRoute(2)
@@ -153,7 +154,7 @@ while True:
         intervalObstacleCheck(map, optimized, 25, img)
         map.addPath(path)
         for i in range(len(optimized)):
-            map.drawLine(img, optimized[i], (255, 0, 0))
+            map.drawLine(img, optimized[i], (0, 0, 255))
             map.drawPoint(img, optimized[i][0], 4, (255, 0, 0))
             map.drawPoint(img, optimized[i][1], 4, (255, 0, 0))
 

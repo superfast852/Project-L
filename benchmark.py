@@ -23,6 +23,7 @@ class BenchBot:
         self.pose = (0, 0, 0)
 
     def test(self):  # 214.31513808763586
+
         print("[1/4] Benchmarking Object Detection W/O Tracking...")
         det_times = self.measured_loops(self.detect)
         self.detector.track = True
@@ -62,11 +63,9 @@ class BenchBot:
 
     def rrtops(self):  # please note, try these independently, as it's supposed to be used sparsely.
         tstart = perf_counter()
-        self.map.paths = []
         start = self.map.getValidPoint()
         stop = self.map.getValidPoint()
         path = self.rrt.plan(start, stop)
-        self.map.addPath(path)
         return perf_counter()-tstart
 
     def slamops(self):
@@ -86,5 +85,9 @@ if __name__ == "__main__":
     # alt method 1: 0.003485587811470032 (10k iters)
     # HOLY SHIT
     bench = BenchBot()
-    bench.test()
+    timing = []
+    for i in range(100):
+        print(f"Iteration: {i}")
+        timing.append(bench.rrtops())
     bench.cam.stop()
+    print(f"RRT Performance: {len(timing)/sum(timing)}")
