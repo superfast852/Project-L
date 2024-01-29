@@ -31,9 +31,9 @@ class Map:
             if map.lower() == "random":
                 # Get a randomly generated map for testing.
                 try:
-                    self.map = load("./Resources/map.npy")  # Formatted as an RRT Map.
+                    self.map = np.load("./Resources/map.npy")  # Formatted as an RRT Map.
                 except FileNotFoundError:
-                    self.map = load("../Resources/map.npy")
+                    self.map = np.load("../Resources/map.npy")
                 self.map_meters = 35
             elif "pkl" in map:
                 with open(map, "rb") as f:
