@@ -1,7 +1,7 @@
 # TODO: Add logging, adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
 
 from threading import Thread
-from extensions.tools import getAngle, smoothSpeed, inTolerance, math, find_port_by_vid_pid, np, limit
+from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar
 from itertools import groupby
@@ -525,6 +525,9 @@ class Rosmaster(object):
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
 
 
+# This is a raw driving output class.
+# It's only function is to move the robot in the direction and speed directed.
+# Custom driving functions can build on top of this class.
 class Drive:  # TODO: Implement self.max properly
     max_speed = 1.0  # Measure this later.
 
@@ -540,7 +543,6 @@ class Drive:  # TODO: Implement self.max properly
         self.thread_life = 1
         self.comm_thread = Thread(target=self.comms)
         self.comm_thread.start()
-        self.kinematics = MecanumKinematics()
         self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
                             (-1, 1, 1, -1), (1, -1, -1, 1),  # Left, Right
                             (0, 1, 1, 0), (-1, 0, 0, -1),    # TopLeft, BottomLeft
@@ -551,7 +553,7 @@ class Drive:  # TODO: Implement self.max properly
     def cartesian(self, x, y, speed=1, turn=0):
         rawTheta = getAngle(x, y)
         theta = rawTheta - math.pi / 2 if rawTheta > math.pi / 2 else 2 * math.pi - rawTheta
-        if theta in self.collision_fn(self.arg):
+        if theta not in self.collision_fn(self.arg):
             print("[WARNING] Drive: Would Collide!")
             self.brake()
             return 0, 0, 0, 0
@@ -606,7 +608,6 @@ class Drive:  # TODO: Implement self.max properly
         self.lf, self.rf, self.lb, self.rb = V_FL_BL, V_FR_BR, V_FL_BL, V_FR_BR
         return V_FL_BL, V_FR_BR, V_FL_BL, V_FR_BR
 
-
     # Note: For simulation, override this class to calculate the robot's position based on the motors. Also ticks.
     def comms(self, update_freq=10):
         while self.thread_life:
@@ -635,45 +636,6 @@ class Drive:  # TODO: Implement self.max properly
         for i in range(101):
             self.lf, self.rf, self.lb, self.rb = lfL(i), rfL(i), lbL(i), rbL(i)
             time.sleep(break_time/100)
-
-    # Advanced Movement Functions
-    # Add NewSmooth
-    # TODO: re-do these, they no workie i think :) You could implememt PID on these, as a pretty easy fix, per se
-    def smoothMove(self, x, y, theta, speed=1, tolerance=0.1):
-        coords = (x, y, theta)
-        smoothers = [smoothSpeed(self.kinematics.pose[i], coords[i]) for i in [0, 1, 2]]
-        diffs = [self.kinematics.pose[i] - coords[i] for i in [0, 1, 2]]
-
-        while (inTolerance(x, self.kinematics.pose[0], tolerance) or inTolerance(y, self.kinematics.pose[1], tolerance)
-                or inTolerance(theta, self.kinematics.pose[2], tolerance)):
-            # Turn calculation is broken. Also remember to later implement actual map path planning.
-
-            progs = [(1-(self.kinematics.pose[i] - coords[i])/diffs[i])*100 for i in [0, 1, 2]]
-            self.cartesian(smoothers[0](progs[0]), smoothers[1](progs[1]), speed, smoothers[2](progs[2]))
-
-    def moveTo(self, x, y, theta, speed=1, tolerance=0.1, wait=0):
-        xDir = 0
-        yDir = 0
-        turnDir = 0
-        while True:
-            if not inTolerance(x, self.kinematics.pose[0], tolerance):
-                if x-self.kinematics.pose[0] > 0:
-                    xDir = -1
-                else:
-                    xDir = 1
-            if not inTolerance(y, self.kinematics.pose[1], tolerance):
-                if y-self.kinematics.pose[1] > 0:
-                    yDir = -1
-                else:
-                    yDir = 1
-            if not inTolerance(theta, self.kinematics.pose[2], tolerance):
-                if theta-self.kinematics.pose[2] > 0:
-                    turnDir = -1
-                else:
-                    turnDir = 1
-            out = self.cartesian(xDir, yDir, speed, turnDir)
-            if (xDir == 0 and yDir == 0 and turnDir == 0) or out == (0, 0, 0, 0):
-                break
 
     def exit(self):
         self.brake()
@@ -786,7 +748,6 @@ class Arm:
 
 class Battery:
     def __init__(self, threshold=11.1, polling_rate=10, custom_f=None):
-        from threading import Thread
         self.threshold = threshold
         self.polling = polling_rate
         if custom_f is None:
@@ -823,15 +784,15 @@ class RP_A1(RPLidarA1):
         try:
             port = find_port_by_vid_pid(self.VID, self.PID)
             self.lidar = RPLidar(port, baudrate, timeout)
-        except Exception as e:
+        except Exception:
             self.lidar = RPLidar(com, baudrate, timeout)
         print(self.lidar.get_info(), self.lidar.get_health())
-        self.scanner = self.lidar.iter_scans()
+        self.scanner = self.lidar.iter_scans(max_buf_meas=8192)
         next(self.scanner)
         self.map = [0]*360
-        self.rotation = rotation
+        self.rotation = rotation%360
 
-    def read(self):
+    def read(self):  # It's totally possible to move this to a thread.
         items = [item for item in next(self.scanner)]
         angles = [item[1] for item in items]
         distances = [item[2] for item in items]  # in millimeters
@@ -839,7 +800,7 @@ class RP_A1(RPLidarA1):
             distances, angles = list(zip(*self.rotate_lidar_readings(zip(distances, angles))))
         for i in range(len(angles)):
             try:
-                self.map[int(angles[i])] = distances[i]
+                self.map[round(angles[i])%360] = distances[i]
             except IndexError:
                 pass
         return angles, distances
@@ -849,8 +810,9 @@ class RP_A1(RPLidarA1):
         self.lidar.stop_motor()
         self.lidar.disconnect()
 
-    def autoStopCollision(self, collision_threshold):
-        return [i for i, distance in enumerate(self.map) if 0 < distance < collision_threshold]
+    def autoStopCollision(self, collision_threshold):  # I also need to figure this out still.
+        # This returns only the clear angles.
+        return [i for (i, distance) in enumerate(self.map) if (0 >= distance or distance >= collision_threshold)]
 
     def self_nav(self, collision_angles, collision_threshold, lMask=(180, 271), rMask=(270, 361)):
         if min(self.map[collision_angles[0]:collision_angles[1]]) < collision_threshold:
