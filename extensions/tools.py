@@ -2,7 +2,6 @@ import math
 from os import system
 from threading import Thread
 import numpy as np
-from numpy import uint8
 from serial.tools.list_ports import comports
 from numba import njit
 
