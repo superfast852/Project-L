@@ -1,3 +1,6 @@
+
+# All of this is very much broken. When implementing, remember to fix this mess.
+
 from RM_HAL import Drive, RP_A1, Arm, Battery, MPU, time
 from extensions.NavStack import Map, RRT, SLAM
 from extensions.PolyTask import TaskManager

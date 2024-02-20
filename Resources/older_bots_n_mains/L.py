@@ -1,4 +1,4 @@
-from Robots.HAL import *
+from Robots.RM_HAL import *
 from networktables import NetworkTables
 
 # This is where we define our robot and its functionality. We instantiate each component and then
@@ -15,7 +15,7 @@ class Robot:
         NetworkTables.initialize()
         self.lidar = RP_A1()  # LD06()
         self.drive = Drive()
-        self.io = io
+        self.io = driver
         self.mpu = MPU()
         self.arm = Arm()
 

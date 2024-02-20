@@ -1,14 +1,10 @@
-# NOTE: The code crashing is due to the IDE, not the code itself.
-# SLAM
 from __future__ import annotations
 from dataclasses import dataclass
-
-
-# Other utilities
 from breezyslam.algorithms import RMHC_SLAM
 from pickle import dump, load
 import numpy as np
 import cv2
+
 
 def pymap(n, func):
     return map(func, n)
@@ -257,7 +253,7 @@ class Node:
         return (self.x, self.y)[item]
 
 
-class Bi_RRT:
+class RRT:
     def __init__(self, map, step_size=25, iterations=1000):
         self.map = map
         self.step_size = step_size

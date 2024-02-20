@@ -190,7 +190,7 @@ class Node:
         return (self.x, self.y)[item]
 
 
-class Bi_RRT:  # TODO: Still need to convert this to meters n stuff
+class RRT:  # TODO: Still need to convert this to meters n stuff
     # TODO: Adapt the inputs, and the path output to be in meters.
     # For this, use the inputParser, and the map's px2m and m2px functions.
     def __init__(self, map, step_size=25, iterations=1000):
