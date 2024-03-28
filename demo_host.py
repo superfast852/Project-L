@@ -2,7 +2,7 @@ from networktables import NetworkTables
 from extensions.tools import XboxController
 from _pickle import dumps
 
-NetworkTables.initialize(server='localhost')
+NetworkTables.initialize(server='orinnano.local')
 controls = NetworkTables.getTable('input')
 controller = XboxController()
 

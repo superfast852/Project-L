@@ -1,4 +1,5 @@
 # TODO: Add logging, adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
+# NOTE: In the driver code, motors 1 and 3 are flipped.
 
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
@@ -437,9 +438,9 @@ class Rosmaster(object):
     # Control PWM pulse of motor to control speed (speed measurement without encoder). speed_X=[-100, 100]
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
-            t_speed_a = bytearray(struct.pack('b', self.__limit_motor_value(speed_1)))
+            t_speed_a = bytearray(struct.pack('b', self.__limit_motor_value(-speed_1)))
             t_speed_b = bytearray(struct.pack('b', self.__limit_motor_value(speed_2)))
-            t_speed_c = bytearray(struct.pack('b', self.__limit_motor_value(speed_3)))
+            t_speed_c = bytearray(struct.pack('b', self.__limit_motor_value(-speed_3)))
             t_speed_d = bytearray(struct.pack('b', self.__limit_motor_value(speed_4)))
             cmd = [self.__HEAD, self.__DEVICE_ID, 0x00, self.FUNC_MOTOR,
                    t_speed_a[0], t_speed_b[0], t_speed_c[0], t_speed_d[0]]
@@ -551,9 +552,9 @@ class Drive:  # TODO: Implement self.max properly
 
     # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0):
-        rawTheta = getAngle(x, y)
-        theta = rawTheta - math.pi / 2 if rawTheta > math.pi / 2 else 2 * math.pi - rawTheta
-        if theta not in self.collision_fn(self.arg):
+        theta = getAngle(x, y)
+        #theta = rawTheta - math.pi / 2 if rawTheta > math.pi / 2 else 2 * math.pi - rawTheta
+        if theta in self.collision_fn(self.arg):
             print("[WARNING] Drive: Would Collide!")
             self.brake()
             return 0, 0, 0, 0
@@ -614,9 +615,9 @@ class Drive:  # TODO: Implement self.max properly
             driver.set_motor(round(self.lf*100), round(self.rf*100), round(self.lb*100), round(self.rb*100))
             time.sleep(1/update_freq)
 
-    def drive(self, x, y, power, turn, flooring=False):
+    def drive(self, x, y, power, turn):
         if self.mecanum:
-            return self.cartesian(x, y, power, turn, flooring)
+            return self.cartesian(x, y, power, turn)
         else:
             return self.tank(power, turn)
 
@@ -641,6 +642,14 @@ class Drive:  # TODO: Implement self.max properly
         self.brake()
         time.sleep(0.1)
         self.thread_life = 0
+
+    def get_directions(self):
+        return [
+            (self.lf - self.rf - self.lb + self.rb)/4,
+            (self.lf + self.rf + self.lb + self.rb)/4,
+            (self.lf - self.rf + self.lb - self.rb)/4
+        ]
+
 
 
 class MPU:

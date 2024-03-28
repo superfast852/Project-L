@@ -155,7 +155,10 @@ def smoothSpeed(start, stop, lapse=100):
 
 
 def getAngle(x, y):
-    return round(math.atan2(y, x), 6)
+    angle = round(math.atan2(y, x), 6)
+    if angle < 0:
+        angle += 2* math.pi
+    return angle
 
 
 def inTolerance(a, b, tol=1):
