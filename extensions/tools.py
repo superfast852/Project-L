@@ -2,7 +2,6 @@ import math
 from os import system
 from threading import Thread
 import numpy as np
-from numpy import uint8
 from serial.tools.list_ports import comports
 from numba import njit
 
@@ -22,15 +21,15 @@ class XboxController(object):
 
     def __init__(self, deadzone=0.1):
         from evdev import InputDevice
-        i = 0
-        while True:
+        for i in range(50):
             try:
                 self.gamepad = InputDevice(f'/dev/input/event{i}')
-                break
+                if self.gamepad.name == "Xbox Wireless Controller":
+                    break
             except OSError:
-                i += 1
-                if i > 50:
-                    raise OSError("No controller found")
+                continue
+        else:
+            raise OSError("No controller found")
         self.deadzone = deadzone
         self.found = False
         self.LJoyY = 0
@@ -54,7 +53,7 @@ class XboxController(object):
         self.UD = 0
         self.DD = 0
 
-        self._monitor_thread = Thread(target=self._monitor_controller, args=())
+        self._monitor_thread = Thread(target=self._monitor_controller)
         self._monitor_thread.daemon = True
         self._monitor_thread.start()
 

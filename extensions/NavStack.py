@@ -482,3 +482,7 @@ class RRT:
     @staticmethod
     def endpointsToPath(endpoints):
         return np.array([[endpoints[i], endpoints[i + 1]] for i in range(len(endpoints) - 1)])
+
+    @staticmethod
+    def isValidPath(path):
+        return (path is not None) and len(path) > 0
