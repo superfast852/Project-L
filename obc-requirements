@@ -6,12 +6,10 @@ rplidar-roboticia  # TODO: find a stable version of the rplidar with the iterato
 ikpy
 pyserial
 pynetworktables
-torch
+# torch
 numpy
-opencv-python
+# opencv-python  # expects you to install the version with cuda
 numba
-tqdm
-networkx
 filterpy
 lap
 
