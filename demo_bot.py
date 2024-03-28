@@ -16,4 +16,5 @@ while running:
     prev_value = vals[7]
     if state:
         drive.switchDrive()
-    print(drive.drive(vals[0], vals[1], vals[4], vals[2]))
+    print(drive.drive(vals[0], vals[1], vals[4], 0))
+    print(list(map(lambda x: round(x, 2), drive.get_directions())))
