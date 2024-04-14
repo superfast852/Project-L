@@ -214,23 +214,15 @@ class SLAM:
         self.slam = RMHC_SLAM(lidar, self.map_size, self.map.map_meters)
         self.slam.setmap(self.mapbytes)
 
-    def update(self, distances, angles=None, odometry=None):
-        # You can choose what angles to feed the slam algo. That way, if the lidar's blocked, you can filter it.
+    def update(self, distances, angles, odometry=None):
         if angles is None:
-            angles = list(range(360))  # we assume it's a premade map of 360 degrees (idiotic btw, dont use this.)
-        elif not isinstance(angles, list):
-            angles = list(angles)  # Ensure that angles is a list
-
-        if len(angles) > len(distances):
-            angles = angles[:len(distances)]
-        elif len(distances) > len(angles):
-            distances = distances[:len(angles)]
+            raise ValueError("Angles are required for SLAM. The array method has been deprecated.")
         self.slam.update(distances, odometry, angles, self.ShouldUpdate)
         # keep in mind that SLAM basically remains running on its own map. So no need to worry about data loss
         self.slam.getmap(self.mapbytes)  # as seen here, SLAMOps run on self.mapbytes exclusively.
         self.map.fromSlam(self.mapbytes)  # then, it gets exported to self.map
-        self.pose = self.pose2px(self.slam.getpos())
-        return self.pose  # SLAM
+        self.pose = self.slam.getpos()
+        return self.pose2px(self.pose)  # SLAM
 
     def pose2px(self, pose=None):
         return round(pose[0] / self.ratio), round(pose[1] / self.ratio), pose[2]  # theta is just rotation so it's fine

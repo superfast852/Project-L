@@ -12,6 +12,7 @@ numpy
 numba
 filterpy
 lap
+evdev
 
 # these only apply if not using rosmaster.
 #board  # Communicating with INA219

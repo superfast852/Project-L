@@ -4,7 +4,7 @@
 from threading import Thread
 from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
 from breezyslam.sensors import RPLidarA1
-from rplidar import RPLidar
+from rplidar import RPLidar, RPLidarException
 from itertools import groupby
 from operator import itemgetter
 import struct
@@ -436,6 +436,7 @@ class Rosmaster(object):
             pass
 
     # Control PWM pulse of motor to control speed (speed measurement without encoder). speed_X=[-100, 100]
+    # Note, we may or may not use the integrated pid controller for it, idk.
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
             t_speed_a = bytearray(struct.pack('b', self.__limit_motor_value(-speed_1)))
@@ -784,44 +785,38 @@ class Battery:
             time.sleep(self.polling)
 
 
-# TODO: Remember to add the proper VID and PID
 class RP_A1(RPLidarA1):
-    VID = 0xDEADBEEF
-    PID = 0xC0FFEE
-    def __init__(self, com="/dev/ttyUSB0", baudrate=115200, timeout=3, rotation=0):
+    VID = 0x10c4
+    PID = 0xea60
+    def __init__(self, com="/dev/ttyUSB2", baudrate=115200, timeout=3, rotation=0):
         super().__init__()
         try:
             port = find_port_by_vid_pid(self.VID, self.PID)
             self.lidar = RPLidar(port, baudrate, timeout)
-        except Exception:
+        except RPLidarException:
             self.lidar = RPLidar(com, baudrate, timeout)
         print(self.lidar.get_info(), self.lidar.get_health())
         self.scanner = self.lidar.iter_scans(max_buf_meas=8192)
+        self.lidar.clean_input()
         next(self.scanner)
-        self.map = [0]*360
-        self.rotation = rotation%360
+        self.rotation = rotation % 360
+        # last_scan = self.read()  # Return this for when we must clear the buffer if we don't read fast enough.
 
     def read(self):  # It's totally possible to move this to a thread.
         items = [item for item in next(self.scanner)]
-        angles = [item[1] for item in items]
-        distances = [item[2] for item in items]  # in millimeters
+        angles, distances = list(zip(*items))[1:]
         if self.rotation != 0:
             distances, angles = list(zip(*self.rotate_lidar_readings(zip(distances, angles))))
-        for i in range(len(angles)):
-            try:
-                self.map[round(angles[i])%360] = distances[i]
-            except IndexError:
-                pass
-        return angles, distances
+        return list(distances), list(angles)
 
     def exit(self):
         self.lidar.stop()
         self.lidar.stop_motor()
         self.lidar.disconnect()
 
-    def autoStopCollision(self, collision_threshold):  # I also need to figure this out still.
+    def autoStopCollision(self, collision_threshold):
         # This returns only the clear angles.
-        return [i for (i, distance) in enumerate(self.map) if (0 >= distance or distance >= collision_threshold)]
+        return [int(angle) for (distance, angle) in zip(self.read()) if distance <= collision_threshold]
 
     def self_nav(self, collision_angles, collision_threshold, lMask=(180, 271), rMask=(270, 361)):
         if min(self.map[collision_angles[0]:collision_angles[1]]) < collision_threshold:

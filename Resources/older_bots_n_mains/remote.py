@@ -22,31 +22,37 @@ visualizer = MapVisualizer(800, 35, "SLAM", True)
 joy = XboxController()
 launchSmartDashboard()
 
-mode_state = 0
-drive_state = 0
+
 mode = 0
 drive_mode = 0
 min_samples = 50
 pose = (400, 400, 0)
 rrtCoords = None
 
+
+def changeMode():
+    global mode
+    mode = not mode
+    status.putBoolean("mode", mode)
+
+
+def changeDrive():
+    global drive_mode
+    drive_mode = not drive_mode
+    status.putBoolean("driveMode", drive_mode)
+
+
+joy.setTrigger("RB", changeDrive)
+joy.setTrigger("LB", changeMode)
+
 try:
     while True:
-        # Edge Triggers
-        mode_change, mode_state = joy.edge(joy.LB, mode_state)
-        change_drive, drive_state = joy.edge(joy.RB, drive_state)
-
         reads = joy.read()
         joyTable.putNumberArray("read", reads[0:5])
 
         if joy.Start:
             break
-        if mode_change:
-            mode = not mode
-            status.putBoolean("mode", mode)
-        if change_drive:
-            drive_mode = not drive_mode
-            status.putBoolean("driveMode", drive_mode)
+
         if reads[5]:
             rrtcoords = planner.plan(pose, (pose[0]+50, pose[1]+50))
             if planner.isValidPath(rrtcoords):

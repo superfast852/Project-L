@@ -4,12 +4,14 @@ from threading import Thread
 import numpy as np
 from serial.tools.list_ports import comports
 from numba import njit
+from time import sleep
 
 
 def find_port_by_vid_pid(vid, pid):
     ports = list(comports())
 
     for port in ports:
+        print()
         if port.vid == vid and port.pid == pid:
             return port.device
     return None
@@ -24,7 +26,7 @@ class XboxController(object):
         for i in range(50):
             try:
                 self.gamepad = InputDevice(f'/dev/input/event{i}')
-                if self.gamepad.name == "Xbox Wireless Controller":
+                if self.gamepad.name == "Xbox Wireless Controller" or self.gamepad.name == "Microsoft X-Box One S pad":
                     break
             except OSError:
                 continue
@@ -138,6 +140,20 @@ class XboxController(object):
     def edge(pulse, last, rising=True):
         status = (pulse if rising else not pulse) and pulse != last
         return status, pulse
+
+    def setTrigger(self, button_name, f, rising=True, polling=1/120, **kwargs):
+        last = False
+        def trigger(**kwargs):
+            nonlocal last
+            print(kwargs)
+            while True:
+                button = getattr(self, button_name)
+                pulse, last = self.edge(button, last, rising)
+                if pulse:
+                    f(**kwargs)
+                sleep(polling)
+        Thread(target=trigger, kwargs=kwargs, daemon=True).start()
+        print(f"Trigger set for {button_name} button.")
 
 
 # IDEA: Bézier curve as smoothing function??? wink wink
@@ -383,9 +399,18 @@ def xyz_matrix():
 
 
 if __name__ == "__main__":
+    from time import sleep
     controller = XboxController()
+
+    def toCall(btn, message):
+        print(f"Button {btn} was pressed. {message}")
+
+    controller.setTrigger("A", toCall, message="This is a Rising call.", btn="A")
+    controller.setTrigger("A", toCall, message="This is a Falling call.", btn="A", rising=False)
     while True:
         print(controller.read())
+        sleep(0.5)
+
 
 
 
