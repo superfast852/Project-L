@@ -167,6 +167,19 @@ class XboxController(object):
 
         except Exception as e:
             print(e)
+            print("Controller has disconnected. Trying to reconnect...")
+            # Indicates that the controller disconnected.
+            for i in range(self.retries):
+                try:
+                    self.connect()
+                    # Need to work on this, the reassignment of self.gamepad may break this loop.
+                    self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
+                    self._monitor_thread.start()
+                    break
+                except OSError:
+                    sleep(self.stall)
+            else:  # If the max amount of retries is reached
+                raise OSError("[ERROR] Controller: Could not reconnect to controller.")
 
     @staticmethod
     def edge(pulse, last, rising=True):
