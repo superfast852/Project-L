@@ -57,7 +57,7 @@ class Map:
         elif isinstance(map, np.ndarray):
             # convert from rrt to IR
             # RRT Maps are numpy arrays that RRT uses to calculate a route to a point. 1 represents an obstacle.
-            if max(map) > 1:
+            if np.max(map) > 1:
                 for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
                     map[index[0], index[1]] = 0
                 for index in np.argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
@@ -111,7 +111,7 @@ class Map:
 
     def tocv2(self, invert=True):
         map = self.map if not invert else np.logical_not(self.map)
-        return cv2.cvtColor(np.rot90(map).astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
+        return cv2.cvtColor(map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
 
     def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
         return cv2.circle(img, (point[0], self.map.shape[0]-point[1]), r, c, t)
@@ -133,12 +133,16 @@ class Map:
         return [self.getValidPoint() for _ in range(n)]
 
     def _posearrowext(self, pose, r):
-        return pose[:2], (round(pose[0]+r*np.cos(pose[2])), round(pose[1]+r*np.sin(pose[2])))
+        return pose[:2], (round(pose[0]+r*np.cos(pose[2]+3.14159)), round(pose[1]+r*np.sin(pose[2]+3.14159)))
 
-    def animate(self, img=None, pose=None, drawLines=True):
+    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
-            img = self.tocv2()
+            #self.map = np.rot90(self.map, 3)
+            img = self.tocv2()  # Why??? TODO: Make it so that the fucking map WORKS.
+
+            # Restoring the map
+            #self.map = np.rot90(self.map)
         if drawLines:
             for path in self.paths:
                 try:
@@ -155,8 +159,8 @@ class Map:
             if pose == "center":
                 cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
             else:
-                pt1, pt2 = self._posearrowext(pose, 20)
-                cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), 3)
+                pt1, pt2 = self._posearrowext(pose, arrowLength)
+                cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
         cv2.imshow("Map", img)
         cv2.waitKey(1)
 
@@ -211,7 +215,7 @@ class SLAM:
         self.pose = (0, 0, 0)
         # Slam Preparation
         self.ratio = self.map.map_meters*1000 / self.map_size  # For converting MM to px.
-        self.slam = RMHC_SLAM(lidar, self.map_size, self.map.map_meters)
+        self.slam = RMHC_SLAM(lidar, self.map_size, self.map.map_meters, map_quality = 50)
         self.slam.setmap(self.mapbytes)
 
     def update(self, distances, angles, odometry=None):
@@ -219,8 +223,9 @@ class SLAM:
             raise ValueError("Angles are required for SLAM. The array method has been deprecated.")
         self.slam.update(distances, odometry, angles, self.ShouldUpdate)
         # keep in mind that SLAM basically remains running on its own map. So no need to worry about data loss
-        self.slam.getmap(self.mapbytes)  # as seen here, SLAMOps run on self.mapbytes exclusively.
-        self.map.fromSlam(self.mapbytes)  # then, it gets exported to self.map
+        if self.ShouldUpdate:
+            self.slam.getmap(self.mapbytes)  # as seen here, SLAMOps run on self.mapbytes exclusively.
+            self.map.fromSlam(self.mapbytes)  # then, it gets exported to self.map
         self.pose = self.slam.getpos()
         return self.pose2px(self.pose)  # SLAM
 

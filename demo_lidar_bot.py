@@ -6,16 +6,19 @@ sys.stderr = sys.stdout
 print(f"Started at {now()}")
 
 from extensions.tools import XboxController
-from Robots.RM_HAL import Drive, RP_A1
+from Robots.RM_HAL import Drive, RP_A1, MecanumKinematics
 from extensions.NavStack import SLAM, Map
 from time import sleep
 from networktables import NetworkTables
+import atexit
+import signal
 
 
 drive = Drive()
 map = Map(800)
-lidar = RP_A1()
+lidar = RP_A1(threaded=True)
 slam = SLAM(lidar, map)
+kine = MecanumKinematics()
 
 # Unity Visualization
 NetworkTables.initialize()
@@ -36,14 +39,24 @@ while True:
 killsig = False
 
 
-def kill():
+def kill(*args, **kwargs):
+    global killsig
+    if killsig:
+        return None
     drive.brake()
+    lidar.exit()
+    drive.exit()
+    NetworkTables.stopServer()
+    NetworkTables.shutdown()
     print("Exited gracefully.")
     killsig = True
 
 
 controller.setTrigger("Back", kill)
 controller.setTrigger("Start", drive.switchDrive)
+atexit.register(kill)
+signal.signal(signal.SIGTERM, kill)
+signal.signal(signal.SIGINT, kill)
 
 while True:
     try:
@@ -51,13 +64,13 @@ while True:
         drive.drive(vals[0], vals[1], vals[4], vals[2])
         if killsig:
             break
-        distances, angles = lidar.read()
+        distances, angles = lidar.latest
         pose = slam.update(distances, angles)
         maptable.putRaw("data", map.toSlam())
         botTable.putNumberArray("pose", pose)
         sleep(1/60)
     except Exception as e:
-        print(f"[ERROR] demo_bot: {e}\n{e.stacktrace}")
+        print(f"[ERROR] demo_bot: {e}\n{e.args}")
         kill()
 print(f"Ended at {now()}\n\n")
 sys.stdout.close()

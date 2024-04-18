@@ -1,23 +1,32 @@
-# TODO: Add logging, adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
-# NOTE: In the driver code, motors 1 and 3 are flipped.
-
-from threading import Thread
-from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
-from breezyslam.sensors import RPLidarA1
-from rplidar import RPLidar, RPLidarException
-from itertools import groupby
-from operator import itemgetter
+import threading
+import serial
+from serial.tools.list_ports import comports
 import struct
 import time
-import serial
-import threading
-import ikpy.chain
-global_start = time.time()
+import math
 
 
+def find_port_by_vid_pid(vid, pid):
+    ports = list(comports())
+
+    for port in ports:
+        print()
+        if port.vid == vid and port.pid == pid:
+            return port.device
+    return None
 
 
-# V1.7.3
+def limit(x, low, high):
+    return min(high, max(x, low))
+
+
+def getAngle(x, y):
+    angle = round(math.atan2(y, x), 6)
+    if angle < 0:
+        angle += 2* math.pi
+    return angle
+
+
 class Rosmaster(object):
     __uart_state = 0
     CARTYPE_X3 = 0x01
@@ -527,6 +536,7 @@ class Rosmaster(object):
 
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
+driver.create_receive_threading()
 
 
 # This is a raw driving output class.
@@ -545,7 +555,7 @@ class Drive:  # TODO: Implement self.max properly
         self.collision_fn = collision_fn
         self.arg = arg
         self.thread_life = 1
-        self.comm_thread = Thread(target=self.comms, daemon=True)
+        self.comm_thread = threading.Thread(target=self.comms, daemon=True)
         self.comm_thread.start()
         self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
                             (-1, 1, 1, -1), (1, -1, -1, 1),  # Left, Right
@@ -632,15 +642,6 @@ class Drive:  # TODO: Implement self.max properly
         time.sleep(0.1)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
 
-    def smoothBrake(self, break_time=1):
-        lfL = smoothSpeed(self.lf, 0)
-        rfL = smoothSpeed(self.rf, 0)
-        lbL = smoothSpeed(self.lb, 0)
-        rbL = smoothSpeed(self.rb, 0)
-        for i in range(101):
-            self.lf, self.rf, self.lb, self.rb = lfL(i), rfL(i), lbL(i), rbL(i)
-            time.sleep(break_time/100)
-
     def exit(self):
         self.brake()
         time.sleep(0.1)
@@ -654,321 +655,159 @@ class Drive:  # TODO: Implement self.max properly
         ]
 
 
-class MPU:
-    def __init__(self):
-        self.mag = 0
-        self.gyro = 0
-        self.acc = 0
+class XboxController(object):
+    MAX_TRIG_VAL = 1024
+    MAX_JOY_VAL = 32768
 
-    def getMag(self):
-        return driver.get_magnetometer_data()
-
-    def getGyro(self):
-        return driver.get_gyroscope_data()
-
-    def getAccel(self):
-        return driver.get_accelerometer_data()
-
-
-class Arm:
-    def __init__(self, num_servos=6, lapse=1, steps=100):
-        from adafruit_servokit import ServoKit
-        try:
-            self.chain = ikpy.chain.Chain.from_urdf_file('../Resources/arm.urdf',
-                                                     active_links_mask=[bool(i%2) for i in range(10)])
-        except FileNotFoundError:
-            self.chain = ikpy.chain.Chain.from_urdf_file('./Resources/arm.urdf',
-                                                         active_links_mask=[bool(i % 2) for i in range(10)])
-        self.mask = [link.bounds[0] for link in self.chain.links]
-        self.delay = lapse/steps
-        self.steps = steps
-        self.pose = np.array([0] * num_servos)
-        self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
-        self.arm = [self.kit.servo[i] for i in range(num_servos)]
-        self.home = [90, 75, 130, 90, 150, 180]
-        self.grabbing = [90, 10, 90, 100, 150, 180]
-        self.dropping = [90, 50, 20, 0, 150, 0]
-        self.move(self.home)
-
-    def grab(self):
-        self.pose[-1] = 0
-        self.arm[-1].angle = 0
-
-    def drop(self):
-        self.pose[-1] = 180
-        self.arm[-1].angle = 180
-
-    def grab_item(self, period=0.5):
-        self.move(self.grabbing)
-        time.sleep(period)
-        self.grab()
-        time.sleep(0.1)
-        self.move(self.dropping)
-        time.sleep(period)
-        self.drop()
-        time.sleep(0.1)
-        self.move(self.home)
-
-    def move(self, pose=None):
-        if pose is None:
-            pose = self.pose
-
-        move_prof = [smoothSpeed(self.pose[i], pose[i], self.steps) for i in range(len(self.pose))]
-        for i in range(self.steps):
-            for n in range(len(self.arm)):
-                self.arm[n].angle = int(move_prof[n][i])
-            time.sleep(self.delay)
-
-    def moveTo(self, target, vector=False):
-        if vector:
-            target = self.v2p(target)
-        pose = self.chain2pose(self.chain.inverse_kinematics(target, initial_position=self.pose2chain(self.pose)))
-        for i, angle in enumerate(pose[:5]):
-            self.arm[i] = angle
-
-    def fk(self):
-        fk = self.chain.forward_kinematics()
-        return fk[:3, 3], fk[:3, :3]
-
-    def chain2pose(self, joints):
-        return np.append(((joints-self.mask)*180.0/np.pi).round()[1::2], [self.pose[-1]])
-
-    def pose2chain(self, pose=None):
-        if pose is None:
-            pose = self.pose.copy()
-
-        return np.vstack(
-            ([float('-inf')] * len(pose[:5]), pose[:5] * np.pi / 180)
-        ).reshape(-1, order='F') + [link.bounds[0] for link in self.chain.links]
-
-    @staticmethod
-    def p2v(coords):
-        d = np.linalg.norm(coords)
-        azimuth = np.arctan2(coords[1], coords[0])
-        elevation = np.arcsin(coords[2] / d)
-        return d, azimuth, elevation
-
-    @staticmethod
-    def v2p(vec):
-        d, a, e = vec
-        x = d * np.cos(a) * np.cos(e)
-        y = d * np.sin(a) * np.cos(e)
-        z = d * np.sin(e)
-        return x, y, z
-
-
-class Battery:
-    def __init__(self, threshold=11.1, polling_rate=10, custom_f=None):
-        self.threshold = threshold
-        self.polling = polling_rate
-        if custom_f is None:
-            self.thread = Thread(target=self.check_bat_voltage, daemon=True)
+    def __init__(self, deadzone=0.1):
+        from evdev import InputDevice
+        for i in range(50):
+            try:
+                self.gamepad = InputDevice(f'/dev/input/event{i}')
+                if self.gamepad.name == "Xbox Wireless Controller" or self.gamepad.name == "Microsoft X-Box One S pad":
+                    break
+            except OSError:
+                continue
         else:
-            self.thread = Thread(target=custom_f, daemon=True)
-        self.thread.start()
+            raise OSError("No controller found")
+        self.deadzone = deadzone
+        self.found = False
+        self.LJoyY = 0
+        self.LJoyX = 0  # This. Also normalize joystick values
+        self.RJoyY = 0
+        self.RJoyX = 0
+        self.LT = 0
+        self.RT = 0
+        self.LB = 0
+        self.RB = 0
+        self.A = 0
+        self.X = 0
+        self.Y = 0
+        self.B = 0
+        self.LJoyB = 0
+        self.RJoyB = 0
+        self.Back = 0
+        self.Start = 0
+        self.LD = 0
+        self.RD = 0
+        self.UD = 0
+        self.DD = 0
+
+        self._monitor_thread = threading.Thread(target=self._monitor_controller, daemon=True)
+        self._monitor_thread.daemon = True
+        self._monitor_thread.start()
+
+    def read(self):  # return the buttons/triggers that you care about in this methode
+        reads = [self.LJoyX, self.LJoyY, self.RJoyX, self.RJoyY,
+                 self.RT, self.A, self.Back, self.Start]
+
+        return [self._clean(i) for i in reads]
+
+    def _clean(self, x):  # Filter out the inputs.
+        return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
+
+    def _monitor_controller(self):
+        from evdev import ecodes
+        try:
+            for event in self.gamepad.read_loop():
+                # Axis
+                if event.type == ecodes.EV_ABS:
+                    if event.code == 1:
+                        self.LJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
+                    elif event.code == 0:
+                        self.LJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL - 1)  # normalize between -1 and 1
+                    elif event.code == 5:
+                        self.RJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
+                    elif event.code == 2:
+                        self.RJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL) - 1  # normalize between -1 and 1
+                    elif event.code == 10:
+                        self.LT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
+                    elif event.code == 9:
+                        self.RT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
+                        # DPad
+
+                    elif event.code == 17:
+                        if event.value == 1:
+                            self.UD = 1
+                            self.DD = 0
+                        elif event.value == -1:
+                            self.UD = 0
+                            self.DD = 1
+
+                    elif event.code == 16:
+                        if event.value == 1:
+                            self.LD = 1
+                            self.RD = 0
+                        elif event.value == -1:
+                            self.LD = 0
+                            self.RD = 1
+
+                elif event.type == ecodes.EV_KEY:
+                    # Bumpers
+                    if event.code == 310:
+                        self.LB = event.value
+                    elif event.code == 311:
+                        self.RB = event.value
+
+                    # Face Buttons
+                    elif event.code == 304:
+                        self.A = event.value
+                    elif event.code == 307:
+                        self.X = event.value  # previously switched with X
+                    elif event.code == 308:
+                        self.Y = event.value  # previously switched with Y
+                    elif event.code == 305:
+                        self.B = event.value
+
+                    # Joystick Buttons
+                    elif event.code == 317:
+                        self.LJoyB = event.value
+                    elif event.code == 318:
+                        self.RJoyB = event.value
+
+                    # Menu Buttons
+                    elif event.code == 158:
+                        self.Back = event.value
+                    elif event.code == 315:
+                        self.Start = event.value
+
+        except Exception as e:
+            print(e)
 
     @staticmethod
-    def get_voltage():
-        return driver.get_battery_voltage()
+    def edge(pulse, last, rising=True):
+        status = (pulse if rising else not pulse) and pulse != last
+        return status, pulse
 
-    def check_bat_voltage(self):
-        from _thread import interrupt_main
-        from time import sleep
-        while True:
-            voltage = self.get_voltage()
-            if voltage <= self.threshold:
-                print("[CRITICAL] Battery levels too low! Voltage: ", voltage)
-                for i in range(5):
-                    driver.set_beep(100)
-                    sleep(0.2)
-                interrupt_main()
-                break
-            time.sleep(self.polling)
-
-
-class RP_A1(RPLidarA1):
-    VID = 0x10c4
-    PID = 0xea60
-
-    def __init__(self, com="/dev/ttyUSB2", baudrate=115200, timeout=3, rotation=0, scan_type="normal", threaded=True):
-        super().__init__()
-        try:
-            port = find_port_by_vid_pid(self.VID, self.PID)
-            self.lidar = RPLidar(port, baudrate, timeout)
-        except RPLidarException:
-            self.lidar = RPLidar(com, baudrate, timeout)
-        print(self.lidar.get_info(), self.lidar.get_health())
-        self.t = threaded
-        self.lidar.clean_input()
-        self.scanner = self.lidar.iter_scans(scan_type, False, 10)
-
-        next(self.scanner)
-        self.rotation = rotation % 360
-        if self.t:
-            self.latest = [[0], [0]]
-            self.scans = Thread(target=self.threaded_read, daemon=True)
-            self.scans.start()
-        # last_scan = self.read()  # Return this for when we must clear the buffer if we don't read fast enough.
-
-    def threaded_read(self):
-        try:
-            while self.t:
-                self.latest = self.read()
-        except RPLidarException:
-            pass
-
-    def read(self, rotate=False):  # It's totally possible to move this to a thread.
-        items = next(self.scanner)
-        angles, distances = list(zip(*items))[1:]
-        if rotate:
-            distances, angles = list(zip(*self.rotate_lidar_readings(zip(distances, angles))))
-        return [list(distances), list(angles)]
-
-    def exit(self):
-        self.lidar.stop()
-        self.lidar.stop_motor()
-        self.lidar.disconnect()
-        if self.t:
-            self.t = False
-            self.scans.join()
-
-    def autoStopCollision(self, collision_threshold):
-        # This returns only the clear angles.
-        distance, angle = self.getScan()
-        clear = []
-        for i, dist in enumerate(distance):
-            if dist > collision_threshold:
-                clear.append(angle[i])
-        return clear
-
-    def getScan(self):
-        return self.latest if self.t else self.read()
-
-    def self_nav(self, collision_angles, collision_threshold, lMask=(180, 271), rMask=(270, 361)):
-        self.map = [collision_threshold-1]*360
-        distances, angles = self.getScan()
-        for i, angle in enumerate(angles):
-            self.map[int(angle)] = distances[i]
-
-        if min(self.map[collision_angles[0]:collision_angles[1]]) < collision_threshold:
-            ls_clear = []
-            rs_clear = []
-
-            for i, distance in enumerate(self.map[rMask[0]:rMask[1]]):  # Right Side Check
-                if distance > collision_threshold:  # If the vector_distance is greater than the threshold
-                    rs_clear.append(i + rMask[0])  # append the angle of the vector to the list of available angles
-
-            for i, distance in enumerate(self.map[lMask[0]:lMask[1]]):  # Left Side Check
-                if distance > collision_threshold:
-                    ls_clear.append(i + lMask[0])
-
-            # From the list, extract all numerical sequences (e.g. [3, 5, 1, 2, 3, 4, 5, 8, 3, 1] -> [[1, 2, 3, 4, 5]])
-            ls_sequences = self._extract_sequence(ls_clear)
-            rs_sequences = self._extract_sequence(rs_clear)
-
-            # Find the longest sequence, as there might be multiple sequences.
-            # If there were no sequences, the longest sequence would be 0.
-            ls_space = max(ls_sequences, key=len) if len(ls_sequences) > 0 else [0, 0]
-            rs_space = max(rs_sequences, key=len) if len(rs_sequences) > 0 else [0, 0]
-
-            if len(ls_space) > len(rs_space):  # If the left side has more space
-                return "Left", ls_space  # Return the direction and the angles of the obstacle for future optional odometry.
-            else:  # If the right side has more space
-                return "Right", rs_space  # Return the direction and the angles of the obstacle for future optional odometry.
-        else:
-            return "Forward", self.map[collision_angles[0]:collision_angles[1]]
-
-    @staticmethod
-    def _extract_sequence(array):
-        sequences = []
-        for k, g in groupby(enumerate(array), lambda x: x[0] - x[1]):
-            seq = list(map(itemgetter(1), g))
-            sequences.append(seq) if len(seq) > 1 else None
-        return sequences
-
-    def rotate_lidar_readings(self, readings):
-        """
-        Rotate lidar angle readings by the specified angle while keeping distances intact.
-
-        Args:
-            readings (list): List of tuples containing distances and angles.
-
-        Returns:
-            list: Rotated lidar readings with preserved distances.
-        """
-        if self.rotation % 360 == 0:
-            return readings
-        else:
-            return [(readings[i][0], (readings[i][1] + self.rotation + 360) % 360) for i in range(len(readings))]
+    def setTrigger(self, button_name, f, rising=True, polling=1/120, **kwargs):
+        last = False
+        def trigger(**kwargs):
+            nonlocal last
+            print(kwargs)
+            while True:
+                button = getattr(self, button_name)
+                pulse, last = self.edge(button, last, rising)
+                if pulse:
+                    f(**kwargs)
+                time.sleep(polling)
+        threading.Thread(target=trigger, kwargs=kwargs, daemon=True).start()
+        print(f"Trigger set for {button_name} button.")
 
 
-# Possible conflict here. The self.pose is different from the pose retrieved by the lidar, yet the same name.
-# TODO: make a tick-to-lidar conversion thingamajig
-# TODO: Actually, get the cart working and rework the entire kinematics system.
-# The issue is directional permanence. The functions don't directly translate to position.
-# One easy change is adding x += x_change * cos(theta) and y += y_change * sin(theta) to the kinematics.
-# This basically makes the x and y axis change according to the current orientation of the bot.
-# Actual testing is required.
-class MecanumKinematics:  # units in centimeters.
-    # lx, ly = 13.2, 8.5
-    def __init__(self, radius=10, wheel2centerDistance=21.7):
-        self.tpr = 362  # Output revolutions (rpm=333.333)
-        self.r = radius
-        self.revs = [0, 0, 0, 0]  # How many times every wheel has turned. Good luck with that.
-        self.w2c = wheel2centerDistance
-        # these take the amount of rotations per wheel and return the movement in centimeters.
-        self.vec = (0, 0)
-        self.pose = [0, 0, 0]
-        self.prev_ticks = [0, 0, 0, 0]
-        self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
-        self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
-        self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
+if __name__ == "__main__":
+    drive = Drive()
+    controller = XboxController()
+    running = True
 
-        self.timestampSecondsPrev = None
-        self.thread = Thread(target=self.updatePosition, daemon=True)
-        self.thread.start()
 
-    def updatePosition(self):
-        while True:
-            self.revs = [i/self.tpr for i in driver.encoders]  # this turns the pose into revolution-based
-            # This means that 1 turn on a wheel is 10cm of distance. Therefore,
-            self.pose[0] = self.x(*self.revs)
-            self.pose[1] = self.y(*self.revs)
-            self.pose[2] = self.w(*self.revs)
-            self.vec = (math.hypot(*self.pose[:2]), math.atan2(*self.pose[1::-1]))
-            time.sleep(1 / 30)
+    def exitCall(*args, **kwargs):
+        drive.exit()
+        running = False
+        print("Exiting...")
 
-    def getTicks(self, x, y, w):  # This already has the right hand rule coordinate system
-        recip = 1 / self.r
-        turn = self.w2c * w
-        xy = x + y
-        notxy = x - y
-        return [recip * (notxy - turn), recip * (xy + turn), recip * (xy - turn), recip * (notxy + turn)]
 
-    def computePoseChange(self, timestamp):
-        timestamp = time.time() - global_start if timestamp is None else timestamp
-        dXMillimeters = 0
-        dYMillimeters = 0
-        dthetaDegrees = 0
-        dtSeconds = 0
-
-        # Extract odometry
-        FL, FR, RL, RR = [self.revs[i] - self.prev_ticks[i] for i in range(4)]
-        self.prev_ticks = self.revs.copy()
-
-        if self.timestampSecondsPrev is not None:
-
-            # Compute motion components based on mecanum equations
-            dXMillimeters = self.x(FL, FR, RL, RR)
-            dYMillimeters = self.y(FL, FR, RL, RR)
-            dthetaDegrees = self.w(FL, FR, RL, RR)
-
-            dtSeconds = timestamp - self.timestampSecondsPrev
-
-        # Store current timestamp for next time
-        self.timestampSecondsPrev = timestamp
-
-        dxyMillimeters = (dXMillimeters ** 2 + dYMillimeters ** 2) ** 0.5  # Total distance in XY plane
-
-        # Return dXY, dtheta, and dt
-        return dxyMillimeters, dthetaDegrees, dtSeconds
+    controller.setTrigger("Start", exitCall)
+    while running:
+        x, y, turn, rSticky, power, a, back, start = controller.read()
+        drive.drive(x, y, power, turn)
+        time.sleep(1/120)
