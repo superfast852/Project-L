@@ -68,6 +68,7 @@ while True:
         pose = slam.update(distances, angles)
         maptable.putRaw("data", map.toSlam())
         botTable.putNumberArray("pose", pose)
+        botTable.putNumberArray("kine", kine.pose)
         sleep(1/60)
     except Exception as e:
         print(f"[ERROR] demo_bot: {e}\n{e.args}")

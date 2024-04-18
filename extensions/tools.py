@@ -1,10 +1,12 @@
 import math
-from os import system
+from os import system, path
 from threading import Thread
+from _thread import interrupt_main
 import numpy as np
 from serial.tools.list_ports import comports
 from numba import njit
-from time import sleep
+from evdev import InputDevice
+from time import sleep, time
 
 
 def find_port_by_vid_pid(vid, pid):
@@ -21,19 +23,16 @@ class XboxController(object):
     MAX_TRIG_VAL = 1024
     MAX_JOY_VAL = 32768
 
-    def __init__(self, deadzone=0.1):
-        from evdev import InputDevice
-        for i in range(50):
-            try:
-                self.gamepad = InputDevice(f'/dev/input/event{i}')
-                if self.gamepad.name == "Xbox Wireless Controller" or self.gamepad.name == "Microsoft X-Box One S pad":
-                    break
-            except OSError:
-                continue
-        else:
-            raise OSError("No controller found")
+    def __init__(self, deadzone=0.1, retries=5, stall=5):
+        self.retries = retries
+        self.stall = stall
+
+        self.device_file = ""
+        self.gamepad = None
+        self.conn_t = None
+        self.connect()
         self.deadzone = deadzone
-        self.found = False
+
         self.LJoyY = 0
         self.LJoyX = 0  # This. Also normalize joystick values
         self.RJoyY = 0
@@ -55,9 +54,22 @@ class XboxController(object):
         self.UD = 0
         self.DD = 0
 
-        self._monitor_thread = Thread(target=self._monitor_controller)
-        self._monitor_thread.daemon = True
+        self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
         self._monitor_thread.start()
+
+    def connect(self):
+        for i in range(50):
+            try:
+                gamepad = InputDevice(f'/dev/input/event{i}')
+                if gamepad.name == "Xbox Wireless Controller" or gamepad.name == "Microsoft X-Box One S pad":
+                    self.device_file = f'/dev/input/event{i}'
+                    self.conn_t = time()
+                    self.gamepad = gamepad
+                    break
+            except OSError:
+                continue
+        else:
+            raise OSError("No controller found")
 
     def read(self):  # return the buttons/triggers that you care about in this methode
         reads = [self.LJoyX, self.LJoyY, self.RJoyX, self.RJoyY,
@@ -71,7 +83,27 @@ class XboxController(object):
     def _monitor_controller(self):
         from evdev import ecodes
         try:
+            start = self.conn_t
             for event in self.gamepad.read_loop():
+                if self.conn_t != start:
+                    break
+                if not path.exists(self.device_file):
+                    print("Controller has disconnected. Trying to reconnect...")
+                    # Indicates that the controller disconnected.
+                    for i in range(self.retries):
+                        try:
+                            self.connect()
+                            # Need to work on this, the reassignment of self.gamepad may break this loop.
+                            self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
+                            self._monitor_thread.start()
+                            break
+                        except OSError:
+                            sleep(self.stall)
+                    else:  # If the max amount of retries is reached
+                        raise OSError("[ERROR] Controller: Could not reconnect to controller.")
+                    continue
+
+
                 # Axis
                 if event.type == ecodes.EV_ABS:
                     if event.code == 1:

@@ -2,6 +2,7 @@
 # NOTE: In the driver code, motors 1 and 3 are flipped.
 
 from threading import Thread
+from _thread import interrupt_main
 from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar, RPLidarException
@@ -814,8 +815,9 @@ class RP_A1(RPLidarA1):
         try:
             while self.t:
                 self.latest = self.read()
-        except RPLidarException:
-            pass
+        except RPLidarException as e:
+            print(f"[ERROR] RPLidar: {e} | {e.args}")
+            interrupt_main()
 
     def read(self, rotate=False):  # It's totally possible to move this to a thread.
         items = next(self.scanner)
@@ -945,7 +947,7 @@ class MecanumKinematics:  # units in centimeters.
         notxy = x - y
         return [recip * (notxy - turn), recip * (xy + turn), recip * (xy - turn), recip * (notxy + turn)]
 
-    def computePoseChange(self, timestamp):
+    def computePoseChange(self, timestamp=None):
         timestamp = time.time() - global_start if timestamp is None else timestamp
         dXMillimeters = 0
         dYMillimeters = 0
