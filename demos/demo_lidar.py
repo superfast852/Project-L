@@ -129,45 +129,6 @@ class RP_A1(RPLidarA1):
             return [(readings[i][0], (readings[i][1] + self.rotation + 360) % 360) for i in range(len(readings))]
 
 
-class AnimatedWindow:
-    def __init__(self):
-        self.fig = plt.figure(figsize=(10, 10))
-        self.ax = self.fig.gca()
-        self.figid = id(self.fig)
-        plt.ion()
-
-    def scatter(self, points):
-        self.ax.scatter(*zip(*points))
-
-    def refresh(self):
-        if id(plt.gcf()) != self.figid:
-            raise ValueError("Window does not exist.")
-
-        plt.draw()
-        plt.pause(0.0001)
-
-    def clear(self):
-        self.ax.cla()
-
-
-class PlotInstant:
-
-    c = 3.14159 / 180
-
-    def __init__(self, bounds = (-3000, 3000)):
-        self.fig = AnimatedWindow()
-        a, b = bounds
-        self.bounds = [(a, a), (a, b), (b, a), (b, b)]
-
-    def plot(self, distances, angles):
-        points = [(distances[i] * math.cos(angles[i]*self.c),
-                   distances[i] * math.sin(angles[i]*self.c)) for i in range(len(distances))]
-        points += self.bounds
-        self.fig.clear()
-        self.fig.scatter(points)
-        self.fig.refresh()
-
-
 def measure_speed():
     '''Main function'''
     lidar = RP_A1(scan_type="express")
@@ -189,8 +150,6 @@ def measure_speed():
         lidar.exit()
         delta = sum(data)/len(data)
         print('Mean: %.2f Hz, %.2f RPM' % (1/delta, 60/delta))
-
-
 
 
 if __name__ == "__main__":

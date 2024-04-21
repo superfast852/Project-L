@@ -83,6 +83,8 @@ class Map:
     def fromSlam(self, map):
         size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
+        # TODO: maake a better converter to take advantage of the map info.
+        # We can get unseen values and quality values.
         map = ((np.array(map) - 73) / 255).reshape(size, size).round()
         self.map = np.logical_not(map).astype(int)
 
@@ -177,30 +179,41 @@ class Map:
             print("Empty or Invalid path provided.")
 
     def collision_free(self, a, b) -> bool:
-        # Bresenham's line algorithm
-        y0, x0 = int(a[0]), int(a[1])
-        y1, x1 = int(b[0]), int(b[1])
-        dx = abs(x1 - x0)
-        sx = 1 if x0 < x1 else -1
-        dy = -abs(y1 - y0)
-        sy = 1 if y0 < y1 else -1
-        err = dx + dy
-
-        while True:
-            if x0 < 0 or x0 >= self.map.shape[0] or y0 < 0 or y0 >= self.map.shape[1]:
-                break  # Out of bounds
-            if self.map[y0, x0] != 0:  # Note the y0, x0 order for numpy arrays
+        x1, y1, x2, y2 = *a, *b
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        issteep = abs(y2 - y1) > abs(x2 - x1)
+        if issteep:
+            x1, y1 = y1, x1
+            x2, y2 = y2, x2
+        rev = False
+        if x1 > x2:
+            x1, x2 = x2, x1
+            y1, y2 = y2, y1
+            rev = True
+        deltax = x2 - x1
+        deltay = abs(y2 - y1)
+        error = int(deltax / 2)
+        y = y1
+        ystep = None
+        if y1 < y2:
+            ystep = 1
+        else:
+            ystep = -1
+        for x in range(x1, x2 + 1):
+            if issteep:
+                point = (y, x)
+            else:
+                point = (x, y)
+            try:
+                if self.map[point[1], point[0]]:  # there is an obstacle
+                    return False
+            except IndexError:  # Hotfix: Out of Bounds check.
                 return False
-            if x0 == x1 and y0 == y1:
-                return True
-            e2 = 2 * err
-            if e2 >= dy:
-                err += dy
-                x0 += sx
-            if e2 <= dx:
-                err += dx
-                y0 += sy
-        return False  # Return False if out of bounds
+            error -= deltay
+            if error < 0:
+                y += ystep
+                error += deltax
+        return True
 
 
 class SLAM:

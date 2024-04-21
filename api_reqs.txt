@@ -1,0 +1,9 @@
+numpy
+opencv-python-headless
+evdev
+pyserial
+rplidar-roboticia
+pupil-apriltags
+adafruit-circuitpython-servokit
+ikpy
+

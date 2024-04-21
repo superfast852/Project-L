@@ -12,7 +12,7 @@ import numpy as np
 from time import time, sleep
 single = 1
 map = Map("random")
-planner = RRT(map, 500, 15, 20)
+planner = RRT(map)
 
 
 def customWithin(points: np.ndarray, x: np.ndarray, r: float) -> np.ndarray:
