@@ -83,7 +83,7 @@ class Map:
     def fromSlam(self, map):
         size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        # TODO: maake a better converter to take advantage of the map info.
+        # TODO: make a better converter to take advantage of the map info.
         # We can get unseen values and quality values.
         map = ((np.array(map) - 73) / 255).reshape(size, size).round()
         self.map = np.logical_not(map).astype(int)
@@ -102,31 +102,35 @@ class Map:
         print(f"[INFO] Saved Map as {name}!")
 
     def isValidPoint(self, point):
-        return not self.map[point[0], point[1]]
+        return not self.map[point[1], point[0]]
 
     def getValidPoint(self) -> tuple:
         free = np.argwhere(self.map == 0)
-        return tuple(free[np.random.randint(0, free.shape[0])])
+        return tuple(free[np.random.randint(0, free.shape[0])][::-1])  # flip to get as xy
 
     def __len__(self):
         return len(self.map)
 
+    def __getitem__(self, item):
+        if len(item) != 2:
+            raise IndexError("Index of the map must be a point (X, Y).")
+        return self.map[item[1], item[0]]
+
     def tocv2(self, invert=True):
-        map = self.map if not invert else np.logical_not(self.map)
+        map = self.map if not invert else np.logical_not(self.map)  # we're not applying transformations to the image.
         return cv2.cvtColor(map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
 
     def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
-        return cv2.circle(img, (point[0], self.map.shape[0]-point[1]), r, c, t)
+        return cv2.circle(img, point, r, c, t)
 
     def drawPx(self, img, point, c=(0, 0, 255), r=1):
         for a in range(-r, r):
             for b in range(-r, r):
-                img[self.map.shape[0]-(point[1]+b)][point[0]+a] = c
+                img[point[1]+a, point[0]+b] = c
         return img
 
     def drawLine(self, img, line, c=(0, 255, 0), **kwargs):
-        return cv2.line(img, (line[0][0], self.map.shape[0]-line[0][1]),
-                        (line[1][0], self.map.shape[0]-line[1][1]), c, **kwargs)
+        return cv2.line(img, *line, c, **kwargs)
 
     def drawLineOfDots(self, img, line, c=(0, 255, 0)):
         [self.drawLine(img, (line[i], line[i+1]), c=c, thickness=2) for i in range(len(line)-1)]
@@ -140,11 +144,7 @@ class Map:
     def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
-            #self.map = np.rot90(self.map, 3)
-            img = self.tocv2()  # Why??? TODO: Make it so that the fucking map WORKS.
-
-            # Restoring the map
-            #self.map = np.rot90(self.map)
+            img = self.tocv2()
         if drawLines:
             for path in self.paths:
                 try:
@@ -152,11 +152,12 @@ class Map:
                 except AttributeError:
                     pass
                 if path:
-                    img = self.drawPoint(img, path[0][0], 4)
-                    img = self.drawPoint(img, path[-1][1], 4)
+                    # Filled point is start, empty point is end
+                    cv2.circle(img, path[0][0], 5, (0, 255, 0), -1)
+                    cv2.circle(img, path[-1][1], 5, (0, 255, 0))
                     color = np.random.randint(0, 256, 3).tolist()
                     for line in path:
-                        img = self.drawLine(img, line, color)
+                        cv2.line(img, *line, color)
         if pose is not None:
             if pose == "center":
                 cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
@@ -181,6 +182,7 @@ class Map:
     def collision_free(self, a, b) -> bool:
         x1, y1, x2, y2 = *a, *b
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        points = []
         issteep = abs(y2 - y1) > abs(x2 - x1)
         if issteep:
             x1, y1 = y1, x1
@@ -264,13 +266,18 @@ class Node:
 
 
 class RRT:
-    def __init__(self, map, step_size=25, iterations=1000):
+    def __init__(self, map, step_size=25, iterations=1000, debug=False):
         self.map = map
         self.step_size = step_size
         self.iterations = iterations
+        self.debug = debug
 
     def plan(self, start, end):
         start, end = np.array(start), np.array(end)
+        if self.debug:
+            self.img = self.map.tocv2()
+            cv2.circle(self.img, start, 5, (0, 255, 0), -1)
+            cv2.circle(self.img, end, 5, (0, 255, 0), -1)
         # If you can go straight to the goal, do it
         if self.map.collision_free(start, end):
             return [[start.tolist(), end.tolist()]]
@@ -287,22 +294,29 @@ class RRT:
             # Oportunity: Reduce the randomness, to make certain-er paths
             # Maybe reduce the options to an ellipse between both points
             random_point = Node(np.random.uniform(0, self.map.map.shape[0]), np.random.uniform(0, self.map.map.shape[1]))
-
             # Extend tree A towards the random point
             nearest_node_a = self._nearest(tree_a, random_point)
             new_node_a = self._steer(nearest_node_a, random_point)
             if new_node_a:
                 tree_a.append(new_node_a)
-
+                if self.debug:
+                    cv2.circle(self.img, [int(new_node_a[0]), int(new_node_a[1])], 5, (0, 0, 255), -1)
                 # Try to connect new node in tree A to nearest node in tree B
                 nearest_node_b = self._nearest(tree_b, new_node_a)
                 new_node_b = self._steer(nearest_node_b, new_node_a)
                 while new_node_b:
                     tree_b.append(new_node_b)
+                    if self.debug:
+                        cv2.circle(self.img, [int(new_node_b[0]), int(new_node_b[1])], 5, (255, 0, 0), -1)
                     if new_node_a.x == new_node_b.x and new_node_a.y == new_node_b.y:  # Trees are connected
+                        if self.debug:
+                            cv2.circle(self.img, [int(new_node_a[0]), int(new_node_a[1])], 5, (255, 0, 255), -1)
+                            self.map.animate(self.img)
+                            cv2.waitKey(1000)
                         # Path found
                         # Combine and reverse path from goal to start
-                        out = self._rearrange(self.extract_path(new_node_a) + self.extract_path(new_node_b)[::-1], start, end)
+                        out = self._rearrange(self.extract_path(new_node_a) + self.extract_path(new_node_b)[::-1],
+                                              start, end)
                         # Here goes all the line postprocessing fluff
 
                         if out[-1][1] != end.tolist():
@@ -314,6 +328,9 @@ class RRT:
 
             # Swap trees
             tree_a, tree_b = tree_b, tree_a
+            if self.debug:
+                self.map.animate(self.img)
+                cv2.waitKey(100)
 
     def _steer(self, from_node, to_node):
         # Steering is picking a new step rate for each direction (so basically an angle abstracted into sine and cosine)
@@ -327,6 +344,8 @@ class RRT:
 
         # Step towards the desired direction.
         new_node = Node(from_node.x + direction[0], from_node.y + direction[1], parent=from_node)
+
+
         if self.map.collision_free(from_node, new_node):
             return new_node
         return None
