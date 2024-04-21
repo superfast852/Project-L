@@ -139,9 +139,11 @@ class Map:
         return [self.getValidPoint() for _ in range(n)]
 
     def _posearrowext(self, pose, r):
-        return pose[:2], (round(pose[0]+r*np.cos(pose[2]+3.14159)), round(pose[1]+r*np.sin(pose[2]+3.14159)))
+        x = r * np.cos(pose[2])
+        y = r * np.sin(pose[2])
+        return (round(pose[0] - x), round(pose[1] - y)), (round(pose[0] + x), round(pose[1] + y))
 
-    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5):
+    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show=True):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
             img = self.tocv2()
@@ -152,9 +154,8 @@ class Map:
                 except AttributeError:
                     pass
                 if path:
-                    # Filled point is start, empty point is end
-                    cv2.circle(img, path[0][0], 5, (0, 255, 0), -1)
-                    cv2.circle(img, path[-1][1], 5, (0, 255, 0))
+                    cv2.circle(img, path[0][0], 5, (0, 0, 0), -1)
+                    cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
                     color = np.random.randint(0, 256, 3).tolist()
                     for line in path:
                         cv2.line(img, *line, color)
@@ -162,9 +163,10 @@ class Map:
             if pose == "center":
                 cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
             else:
-                pt1, pt2 = self._posearrowext(pose, arrowLength)
+                pt1, pt2 = self._posearrowext(pose, arrowLength/2)
                 cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
-        cv2.imshow("Map", img)
+        if show:
+            cv2.imshow("Map", img)
         cv2.waitKey(1)
 
     def addPath(self, route: np.ndarray):
@@ -216,7 +218,6 @@ class Map:
                 y += ystep
                 error += deltax
         return True
-
 
 class SLAM:
     def __init__(self, lidar=None, map_handle=None, update_map=1):
