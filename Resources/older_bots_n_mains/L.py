@@ -16,7 +16,7 @@ class Robot:
         self.lidar = RP_A1()  # LD06()
         self.drive = Drive()
         self.io = driver
-        self.mpu = MPU()
+        self.imu = IMU()
         self.arm = Arm()
 
     def thread(self, *args):
@@ -40,13 +40,13 @@ class Robot:
             self.arm.drop()
             self.arm.move(self.arm.home)
         if mpu:
-            print(self.mpu.mpu.readSensor())
+            print(self.imu.getMag(), self.imu.getGyro(), self.imu.getAccel())
 
     def exit(self):
         NetworkTables.stopServer()
         self.drive.exit()
         self.io.cleanup()
-        self.mpu.exit()
+        self.imu.exit()
         print("Robot exited.")
 
 

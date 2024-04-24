@@ -126,14 +126,14 @@ class SoftwareTests(BenchmarkingTest):
 
 class HardwareTests(BenchmarkingTest):
     def __init__(self):
-        from Robots.RM_HAL import Drive, MPU, Battery, MecanumKinematics, driver, np, time
-        super().__init__(["Drive", "MPU", "Battery"],
-                         [self.driveTest, self.mpuTest, self.batTest],
+        from Robots.RM_HAL import Drive, IMU, Battery, MecanumKinematics, driver, np, time
+        super().__init__(["Drive", "IMU", "Battery"],
+                         [self.driveTest, self.imuTest, self.batTest],
                          [False, False, False],
                          [360, 1000, 1000])
         self.drive = Drive()
         self.driver = driver
-        self.mpu = MPU()
+        self.imu = IMU()
         self.bat = Battery()
         self.vLevel = 12.6
         self.mag = []
@@ -146,10 +146,10 @@ class HardwareTests(BenchmarkingTest):
     def batTest(self):
         self.vLevel = sum([self.bat.get_voltage() for _ in range(10)]) / 10
 
-    def mpuTest(self):
-        self.mag.append(self.mpu.getMag())
-        self.gyro.append(self.mpu.getGyro())
-        self.accel.append(self.mpu.getAccel())
+    def imuTest(self):
+        self.mag.append(self.imu.getMag())
+        self.gyro.append(self.imu.getGyro())
+        self.accel.append(self.imu.getAccel())
 
     def driveTest(self):
         traj = self.trajectories[self.traj_count % 360]

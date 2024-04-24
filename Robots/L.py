@@ -1,7 +1,7 @@
 
 # All of this is very much broken. When implementing, remember to fix this mess.
 
-from RM_HAL import Drive, RP_A1, Arm, Battery, MPU, time
+from RM_HAL import Drive, RP_A1, Arm, Battery, IMU, time
 from extensions.NavStack import Map, RRT, SLAM
 from extensions.PolyTask import TaskManager
 from extensions.Detector import Detector, coco
@@ -96,7 +96,7 @@ class Robot:
         self.manager = manager
         # Components:
         self.drive = Drive()  # uses rosmaster
-        self.mpu = MPU()
+        self.imu = IMU()
         self.battery = Battery(self.manager)
         self.lidar = RP_A1()  # uses lidar
         self.arm = Arm()  # uses servokit

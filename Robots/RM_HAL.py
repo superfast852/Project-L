@@ -15,9 +15,6 @@ import threading
 import ikpy.chain
 global_start = time.time()
 
-
-
-
 # V1.7.3
 class Rosmaster(object):
     __uart_state = 0
@@ -28,7 +25,7 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, com="/dev/ttyUSB0", delay=.002, debug=False):
+    def __init__(self, car_type=0x02, enc_mod = (-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB0", delay=.002, debug=False):
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.ser = serial.Serial(port, 115200)
         if not self.ser.isOpen():
@@ -96,6 +93,7 @@ class Rosmaster(object):
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
         self.prev_enc = [0, 0, 0, 0]
+        self.enc_mod = enc_mod
         self.last_update = time.time()
 
         self.__read_id = 0
@@ -180,6 +178,7 @@ class Rosmaster(object):
             time_diff = timing-self.last_update
             self.last_update = timing
             for i in range(4):
+                self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
                 self.enc_speed[i] = (self.encoders[i]-self.prev_enc[i])/time_diff
 
         else:
@@ -656,7 +655,7 @@ class Drive:  # TODO: Implement self.max properly
         ]
 
 
-class MPU:
+class IMU:
     def __init__(self):
         self.mag = 0
         self.gyro = 0
@@ -913,8 +912,9 @@ class RP_A1(RPLidarA1):
 # This basically makes the x and y axis change according to the current orientation of the bot.
 # Actual testing is required.
 class MecanumKinematics:  # units in centimeters.
-    # lx, ly = 13.2, 8.5
-    def __init__(self, radius=10, wheel2centerDistance=21.7):
+    # lx, ly = 15.5, 8.5
+    # lt = 24
+    def __init__(self, radius=5, wheel2centerDistance=24):
         self.tpr = 362  # Output revolutions (rpm=333.333)
         self.r = radius
         self.revs = [0, 0, 0, 0]  # How many times every wheel has turned. Good luck with that.
@@ -935,9 +935,9 @@ class MecanumKinematics:  # units in centimeters.
         while True:
             self.revs = [i/self.tpr for i in driver.encoders]  # this turns the pose into revolution-based
             # This means that 1 turn on a wheel is 10cm of distance. Therefore,
-            self.pose[0] = self.x(*self.revs)
-            self.pose[1] = self.y(*self.revs)
-            self.pose[2] = self.w(*self.revs)
+            self.pose[0] = round(self.x(*self.revs), 5)
+            self.pose[1] = round(self.y(*self.revs), 5)
+            self.pose[2] = round(self.w(*self.revs), 5)
             self.vec = (math.hypot(*self.pose[:2]), math.atan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
 
