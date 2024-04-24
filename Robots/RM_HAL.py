@@ -528,6 +528,7 @@ class Rosmaster(object):
 
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
+driver.create_receive_threading()
 
 
 # This is a raw driving output class.
