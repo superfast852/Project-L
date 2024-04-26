@@ -4,6 +4,7 @@
 from threading import Thread
 from _thread import interrupt_main
 from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
+from extensions.NavStack import SLAM
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar, RPLidarException
 from itertools import groupby
@@ -793,19 +794,23 @@ class RP_A1(RPLidarA1):
 
     def __init__(self, com="/dev/ttyUSB2", baudrate=115200, timeout=3, rotation=0, scan_type="normal", threaded=True):
         super().__init__()
-        try:
-            port = find_port_by_vid_pid(self.VID, self.PID)
-            self.lidar = RPLidar(port, baudrate, timeout)
-        except RPLidarException:
-            self.lidar = RPLidar(com, baudrate, timeout)
+        port = find_port_by_vid_pid(self.VID, self.PID)
+        self.lidar = RPLidar(port, baudrate, timeout)
         print(self.lidar.get_info(), self.lidar.get_health())
-        self.t = threaded
         self.lidar.clean_input()
         self.scanner = self.lidar.iter_scans(scan_type, False, 10)
 
         next(self.scanner)
         self.rotation = rotation % 360
-        if self.t:
+        if isinstance(threaded, SLAM):
+            self.t = True
+            self.latest = [[0], [0]]
+            self.pose = [0, 0, 0]
+            self.scans = Thread(target=self.threaded_mapping, daemon=True, args=(threaded,))
+            self.scans.start()
+            pass
+        elif threaded:
+            self.t = True
             self.latest = [[0], [0]]
             self.scans = Thread(target=self.threaded_read, daemon=True)
             self.scans.start()
@@ -815,6 +820,15 @@ class RP_A1(RPLidarA1):
         try:
             while self.t:
                 self.latest = self.read()
+        except RPLidarException as e:
+            print(f"[ERROR] RPLidar: {e} | {e.args}")
+            interrupt_main()
+
+    def threaded_mapping(self, mapping: SLAM):
+        try:
+            while self.t:
+                self.latest = self.read()
+                self.pose = mapping.update(*self.latest)
         except RPLidarException as e:
             print(f"[ERROR] RPLidar: {e} | {e.args}")
             interrupt_main()
@@ -847,7 +861,7 @@ class RP_A1(RPLidarA1):
         return self.latest if self.t else self.read()
 
     def self_nav(self, collision_angles, collision_threshold, lMask=(180, 271), rMask=(270, 361)):
-        self.map = [collision_threshold-1]*360
+        self.map = [collision_threshold - 1] * 360
         distances, angles = self.getScan()
         for i, angle in enumerate(angles):
             self.map[int(angle)] = distances[i]

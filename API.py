@@ -97,7 +97,6 @@ class XboxController(object):
         return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
 
     def _monitor_controller(self):
-        from evdev import ecodes
         try:
             start = self.conn_t
             for event in self.gamepad.read_loop():
@@ -240,7 +239,7 @@ def getAngle(x, y):
 
 
 def ecd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    return np.linalg.norm(a-b)
+    return np.linalg.norm(a-b)  # a^2 + b^2 = c^2
 
 
 def inTolerance(a, b, tol=1):
@@ -796,6 +795,7 @@ class Rosmaster(object):
 
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
+driver.create_receive_threading()
 
 
 class Drive:  # TODO: Implement self.max properly
@@ -954,6 +954,7 @@ class Arm:
         self.grabbing = [90, 10, 90, 100, 150, 180]
         self.dropping = [90, 50, 20, 0, 150, 0]
         self.move(self.home)
+        self.in_use = False
 
     def grab(self):
         self.pose[-1] = 0
@@ -977,12 +978,17 @@ class Arm:
     def move(self, pose=None):
         if pose is None:
             pose = self.pose
-
+        while self.in_use:  # Thread-safe handle
+            ...
+        self.in_use = True
         move_prof = [smoothSpeed(self.pose[i], pose[i], self.steps) for i in range(len(self.pose))]
         for i in range(self.steps):
             for n in range(len(self.arm)):
+                if not self.in_use:  # Calling for an immediate stop
+                    break
                 self.arm[n].angle = int(move_prof[n](i))
             sleep(self.delay)
+        self.in_use = False
 
     def moveTo(self, target, vector=False):
         if vector:
@@ -1058,13 +1064,20 @@ class RP_A1(RPLidarA1):
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.lidar = RPLidar(port, baudrate, timeout)
         print(self.lidar.get_info(), self.lidar.get_health())
-        self.t = threaded
         self.lidar.clean_input()
         self.scanner = self.lidar.iter_scans(scan_type, False, 10)
 
         next(self.scanner)
         self.rotation = rotation % 360
-        if self.t:
+        if isinstance(threaded, SLAM):
+            self.t = True
+            self.latest = [[0], [0]]
+            self.pose = [0, 0, 0]
+            self.scans = Thread(target=self.threaded_mapping, daemon=True, args=(threaded,))
+            self.scans.start()
+            pass
+        elif threaded:
+            self.t = True
             self.latest = [[0], [0]]
             self.scans = Thread(target=self.threaded_read, daemon=True)
             self.scans.start()
@@ -1074,6 +1087,15 @@ class RP_A1(RPLidarA1):
         try:
             while self.t:
                 self.latest = self.read()
+        except RPLidarException as e:
+            print(f"[ERROR] RPLidar: {e} | {e.args}")
+            interrupt_main()
+
+    def threaded_mapping(self, mapping: SLAM):
+        try:
+            while self.t:
+                self.latest = self.read()
+                self.pose = mapping.update(*self.latest)
         except RPLidarException as e:
             print(f"[ERROR] RPLidar: {e} | {e.args}")
             interrupt_main()
@@ -2056,23 +2078,159 @@ if __name__ == "__main__":
             self.lidar.exit()
             self.cam.stop()
 
-    r = Robot()
-    control = True
+    def Robot_Usage():
 
-    if control:
+        r = Robot()
+        control = True
+
+        if control:
+            c = XboxController()
+            def breaker():
+                raise KeyError("Shutting down.")
+
+            c.setTrigger("Back", breaker)
+            c.setTrigger("Start", r.drive.switchDrive())
+            while True:
+                try:
+                    inputs = c.read()
+                    r.drive.drive(inputs[0], inputs[1], inputs[4], inputs[2])
+                except KeyError:
+                    break
+        else:
+            r.asf()
+
+
+    def Full_Function():
         c = XboxController()
-        def breaker():
-            raise KeyError("Shutting down.")
+        drive = Drive()
+        arm = Arm()  # i have no clue how you're going to operate the arm stuff
+        bat = Battery()
+        cam = Camera()
+        cam.start()
 
-        c.setTrigger("Back", breaker)
-        c.setTrigger("Start", r.drive.switchDrive())
-        while True:
+        with open("params_i.pkl", "rb") as f:
+            camera_params = load(f)
+            mtx = camera_params[0]
+            intrinsics = (mtx[0, 0], mtx[1, 1], mtx[0, 2], mtx[1, 2])  # Camera parameters
+
+        map = Map(800)
+        slam = SLAM(None, map)
+        lidar = RP_A1(threaded=slam)  # We're using an experimental version of SLAM/Lidar combo.
+        rrt = RRT(map)
+        ap = ApriltagDetector(nthreads=4, quad_decimate=1.5, refine_edges=1)  # TODO: it'd be good to tune this.
+
+        running = True
+        latest_path = None
+        mode = "Auto"
+
+
+        # Preprocessing the camera
+        img = cam.read()
+        h, w = img.shape[:2]
+        newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, camera_params[1], (w, h), 1, (w, h))
+
+        # Think i should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
+        def exceptionless_exec(f):
             try:
-                inputs = c.read()
-                r.drive.drive(inputs[0], inputs[1], inputs[4], inputs[2])
-            except KeyError:
-                break
-    else:
-        r.asf()
+                f()
+            except Exception as e:
+                print(f"[ERROR] exceptionless_exec: {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
+
+        @atexit.register  # Make it so that this function is called on program stop, no matter what.
+        def exiting():
+            cv2.destroyAllWindows()
+            exceptionless_exec(drive.exit)
+            exceptionless_exec(homeArm)
+            exceptionless_exec(cam.stop)
+            exceptionless_exec(lidar.exit)
+
+        def breaker():
+            global running
+            running = False
+
+        def getRandomPath(i=0):
+            if i == 5:  # Maximum iterations, return.
+                return
+            global latest_path
+            goal = map.getValidPoint()  # Get a random point in the map.
+            start = slam.pose2px(slam.pose)[:2]  # Get the current position in the map
+            candidate = rrt.plan(start, goal)  # Calculate a path
+            if rrt.isValidPath(candidate):  # If it finds a path that works:
+                map.paths = []  # Clear previous maps.
+                map.addPath(candidate)  # Add to map for visualization
+                latest_path = candidate  # save the map in a local variable
+            else:
+                getRandomPath(i+1)  # Try again.
+
+        def resetPath():
+            global latest_path
+            latest_path = None
+            map.paths = []
+
+        def navigate_to_path():  # TODO: implement this.
+            ...
+
+        def switchMode(functionality):
+            global mode
+            mode = functionality
+
+        def homeArm():
+            if arm.in_use:
+                arm.in_use = False
+                sleep(0.5)
+            arm.move(arm.home)
+
+        c.setTrigger("Back", breaker)  # The backbreaker line. This is to have a stop button on the controls.
+        c.setTrigger("X", getRandomPath)  # Make a Random Path.
+        c.setTrigger("Y", resetPath)  # Clear paths
+        c.setTrigger("Start", drive.switchDrive)  # Switch between mecanum and differential.
+        c.setTrigger("RB", homeArm)  # Home the arm, if needed. I'm sure this can break.
+        c.setTrigger("A", lambda: driver.set_beep(100))  # el pito B)
+        # This will switch between pause and manual control.
+        c.setTrigger("DD", switchMode, functionality="Pause" if mode != "Pause" else "Manual")
+        c.setTrigger("UD", switchMode,
+                     functionality="Manual" if mode == "Auto" else "Auto" if mode == "Manual" else "Pause")
+                    # The mode will be Manual if it was auto, auto if it was manual, and will stay in pause.
+
+        while running:  # a stoppable while loop.
+            # 3 Stages of robot operation:
+
+            # 1- Input collection
+            frame = cam.read()
+            pose = slam.pose2px(slam.pose)
+
+            # 2- Data Processing
+            # Apply camera intrinsics to undistort the image
+            dst = cv2.undistort(frame, mtx, camera_params[1], None, newcameramtx)
+            x, y, w, h = roi
+            frame = dst[y:y + h, x:x + w]  # crop out the bends
+
+            tags = ap.detect(frame, True, intrinsics, 0.158)  # Detect by 3D pose.
+
+            for tag in tags:
+                tag.draw(frame, center=True, lockon=True, outline=True)
+                n, a = tag.get_north()
+                draw_arrow(frame, n, a, 20, (0, 255, 255), 2)
+                # TODO: Add tracking and arm movement.
+
+            # 3- Outputs
+            if mode == "Auto":
+                if latest_path is not None:
+                    navigate_to_path()
+                else:
+                    # TODO: make a better scouting algorithm.
+                    getRandomPath()
+            elif mode == "Manual":
+                drive.drive(c.LJoyX, c.LJoyY, c.RT, c.RJoyX)  # manual driving.
+            else:
+                drive.brake()
+
+            cv2.imshow("Camera Feed", frame)
+            # This method implicitly runs cv2.waitKey(1), so no need to call that.
+            map.animate(None, pose=pose)  # TODO: you may need to add pi to the angle of the pose.
+
+
+    Full_Function()
+
 
 
