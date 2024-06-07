@@ -937,6 +937,7 @@ class IMU:
 
 
 class Arm:
+    in_use = False
     def __init__(self, num_servos=6, lapse=1, steps=100):
         try:
             self.chain = ikpy.chain.Chain.from_urdf_file('./arm.urdf',
@@ -951,10 +952,10 @@ class Arm:
         self.kit = ServoKit(channels=8 if num_servos >= 8 else 16)
         self.arm = [self.kit.servo[i] for i in range(num_servos)]
         self.home = [90, 75, 130, 90, 150, 180]
-        self.grabbing = [90, 10, 90, 100, 150, 180]
-        self.dropping = [90, 50, 20, 0, 150, 0]
+        self.grabbing = [180, 60, 130, 90, 55, 23]
+        self.dropping = [180, 90, 40, 0, 70, 160]
         self.move(self.home)
-        self.in_use = False
+
 
     def grab(self):
         self.pose[-1] = 0
@@ -1391,11 +1392,7 @@ class Map:
     def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
-            #self.map = np.rot90(self.map, 3)
-            img = self.tocv2()  # Why??? TODO: Make it so that the fucking map WORKS.
-
-            # Restoring the map
-            #self.map = np.rot90(self.map)
+            img = self.tocv2()
         if drawLines:
             for path in self.paths:
                 try:
@@ -2104,7 +2101,7 @@ if __name__ == "__main__":
         c = XboxController()
         drive = Drive()
         arm = Arm()  # i have no clue how you're going to operate the arm stuff
-        bat = Battery()
+        # bat = Battery()
         cam = Camera()
         cam.start()
 
@@ -2121,7 +2118,7 @@ if __name__ == "__main__":
 
         running = True
         latest_path = None
-        mode = "Auto"
+        mode = "Manual"
 
 
         # Preprocessing the camera
@@ -2184,7 +2181,9 @@ if __name__ == "__main__":
         c.setTrigger("X", getRandomPath)  # Make a Random Path.
         c.setTrigger("Y", resetPath)  # Clear paths
         c.setTrigger("Start", drive.switchDrive)  # Switch between mecanum and differential.
-        c.setTrigger("RB", homeArm)  # Home the arm, if needed. I'm sure this can break.
+        c.setTrigger("B", homeArm)  # Home the arm, if needed. I'm sure this can break.
+        c.setTrigger("RB", lambda: arm.move(arm.grabbing))
+        c.setTrigger("LB", lambda: arm.move(arm.dropping))
         c.setTrigger("A", lambda: driver.set_beep(100))  # el pito B)
         # This will switch between pause and manual control.
         c.setTrigger("DD", switchMode, functionality="Pause" if mode != "Pause" else "Manual")

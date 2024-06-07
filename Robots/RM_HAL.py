@@ -26,7 +26,7 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, enc_mod = (-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB0", delay=.002, debug=False):
+    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB0", delay=.002, debug=False):
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.ser = serial.Serial(port, 115200)
         if not self.ser.isOpen():
@@ -143,27 +143,33 @@ class Rosmaster(object):
 
     # According to the type of data frame to make the corresponding parsing
     def __parse_data(self, ext_type, ext_data):
+        # print(ext_type, " ", ext_data)
+
         # print("parse_data:", ext_data, ext_type)
         if ext_type == self.FUNC_REPORT_SPEED:
-            # print(ext_data)
+            print()
             self.__vx = int(struct.unpack('h', bytearray(ext_data[0:2]))[0]) / 1000.0
             self.__vy = int(struct.unpack('h', bytearray(ext_data[2:4]))[0]) / 1000.0
             self.__vz = int(struct.unpack('h', bytearray(ext_data[4:6]))[0]) / 1000.0
             self.__battery_voltage = struct.unpack('B', bytearray(ext_data[6:7]))[0]
+
         # the original gyroscope, accelerometer, magnetometer data
         elif ext_type == self.FUNC_REPORT_IMU_RAW:
             gyro_ratio = 1 / 3754.9  # ±500dps
             self.__gx = struct.unpack('h', bytearray(ext_data[0:2]))[0] * gyro_ratio
             self.__gy = struct.unpack('h', bytearray(ext_data[2:4]))[0] * -gyro_ratio
             self.__gz = struct.unpack('h', bytearray(ext_data[4:6]))[0] * -gyro_ratio
+
             accel_ratio = 1 / 1671.84
             self.__ax = struct.unpack('h', bytearray(ext_data[6:8]))[0] * accel_ratio
             self.__ay = struct.unpack('h', bytearray(ext_data[8:10]))[0] * accel_ratio
             self.__az = struct.unpack('h', bytearray(ext_data[10:12]))[0] * accel_ratio
+
             mag_ratio = 1
             self.__mx = struct.unpack('h', bytearray(ext_data[12:14]))[0] * mag_ratio
             self.__my = struct.unpack('h', bytearray(ext_data[14:16]))[0] * mag_ratio
             self.__mz = struct.unpack('h', bytearray(ext_data[16:18]))[0] * mag_ratio
+
         # the attitude Angle of the board
         elif ext_type == self.FUNC_REPORT_IMU_ATT:
             self.__roll = struct.unpack('h', bytearray(ext_data[0:2]))[0] / 10000.0
@@ -174,6 +180,7 @@ class Rosmaster(object):
         elif ext_type == self.FUNC_REPORT_ENCODER:
             self.prev_enc = self.encoders.copy()
             steps = list(range(0, 17, 4))
+            print(ext_data)
             self.encoders = [struct.unpack('i', bytearray(ext_data[steps[i]:steps[i+1]]))[0] for i in range(len(steps)-1)]
             timing = time.time()
             time_diff = timing-self.last_update
@@ -182,47 +189,46 @@ class Rosmaster(object):
                 self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
                 self.enc_speed[i] = (self.encoders[i]-self.prev_enc[i])/time_diff
 
-        else:
-            if ext_type == self.FUNC_UART_SERVO:
-                self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
-                self.__read_val = struct.unpack('h', bytearray(ext_data[1:3]))[0]
-                if self.__debug:
-                    print("FUNC_UART_SERVO:", self.__read_id, self.__read_val)
+        elif ext_type == self.FUNC_UART_SERVO:
+            self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
+            self.__read_val = struct.unpack('h', bytearray(ext_data[1:3]))[0]
+            if self.__debug:
+                print("FUNC_UART_SERVO:", self.__read_id, self.__read_val)
 
-            elif ext_type == self.FUNC_ARM_CTRL:
-                self.__read_arm[0] = struct.unpack('h', bytearray(ext_data[0:2]))[0]
-                self.__read_arm[1] = struct.unpack('h', bytearray(ext_data[2:4]))[0]
-                self.__read_arm[2] = struct.unpack('h', bytearray(ext_data[4:6]))[0]
-                self.__read_arm[3] = struct.unpack('h', bytearray(ext_data[6:8]))[0]
-                self.__read_arm[4] = struct.unpack('h', bytearray(ext_data[8:10]))[0]
-                self.__read_arm[5] = struct.unpack('h', bytearray(ext_data[10:12]))[0]
-                self.__read_arm_ok = 1
-                if self.__debug:
-                    print("FUNC_ARM_CTRL:", self.__read_arm)
+        elif ext_type == self.FUNC_ARM_CTRL:
+            self.__read_arm[0] = struct.unpack('h', bytearray(ext_data[0:2]))[0]
+            self.__read_arm[1] = struct.unpack('h', bytearray(ext_data[2:4]))[0]
+            self.__read_arm[2] = struct.unpack('h', bytearray(ext_data[4:6]))[0]
+            self.__read_arm[3] = struct.unpack('h', bytearray(ext_data[6:8]))[0]
+            self.__read_arm[4] = struct.unpack('h', bytearray(ext_data[8:10]))[0]
+            self.__read_arm[5] = struct.unpack('h', bytearray(ext_data[10:12]))[0]
+            self.__read_arm_ok = 1
+            if self.__debug:
+                print("FUNC_ARM_CTRL:", self.__read_arm)
 
-            elif ext_type == self.FUNC_VERSION:
-                self.__version_H = struct.unpack('B', bytearray(ext_data[0:1]))[0]
-                self.__version_L = struct.unpack('B', bytearray(ext_data[1:2]))[0]
-                if self.__debug:
-                    print("FUNC_VERSION:", self.__version_H, self.__version_L)
+        elif ext_type == self.FUNC_VERSION:
+            self.__version_H = struct.unpack('B', bytearray(ext_data[0:1]))[0]
+            self.__version_L = struct.unpack('B', bytearray(ext_data[1:2]))[0]
+            if self.__debug:
+                print("FUNC_VERSION:", self.__version_H, self.__version_L)
 
-            elif ext_type == self.FUNC_SET_MOTOR_PID:
-                self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
-                self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
-                self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
-                self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
-                if self.__debug:
-                    print("FUNC_SET_MOTOR_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
+        elif ext_type == self.FUNC_SET_MOTOR_PID:
+            self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
+            self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
+            self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
+            self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
+            if self.__debug:
+                print("FUNC_SET_MOTOR_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
 
-            elif ext_type == self.FUNC_SET_YAW_PID:
-                self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
-                self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
-                self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
-                self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
-                if self.__debug:
-                    print("FUNC_SET_YAW_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
+        elif ext_type == self.FUNC_SET_YAW_PID:
+            self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
+            self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
+            self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
+            self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
+            if self.__debug:
+                print("FUNC_SET_YAW_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
 
-            elif ext_type == self.FUNC_ARM_OFFSET:
+        elif ext_type == self.FUNC_ARM_OFFSET:
                 self.__arm_offset_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
                 self.__arm_offset_state = struct.unpack('B', bytearray(ext_data[1:2]))[0]
                 if self.__debug:
@@ -244,56 +250,24 @@ class Rosmaster(object):
                     while len(ext_data) < data_len:
                         value = bytearray(self.ser.read())[0]
                         ext_data.append(value)
-                        if len(ext_data) == data_len:
+                        if len(ext_data) == data_len:  # Would this only run on the last iteration?
                             rx_check_num = value
                         else:
                             check_sum = check_sum + value
+
                     if check_sum % 256 == rx_check_num:
                         self.__parse_data(ext_type, ext_data)
                     else:
                         if self.__debug:
                             print("check sum error:", ext_len, ext_type, ext_data)
 
-    # Request data, function: corresponding function word to return data, parm: parameter passed in
-    def __request_data(self, function, param=0):
-        cmd = [self.__HEAD, self.__DEVICE_ID, 0x05, self.FUNC_REQUEST_DATA, int(function) & 0xff, int(param) & 0xff]
-        checksum = sum(cmd, self.__COMPLEMENT) & 0xff
-        cmd.append(checksum)
-        self.ser.write(cmd)
-        if self.__debug:
-            print("request:", cmd)
-        time.sleep(0.002)
-
-    # Arm converts Angle to position pulse
-    @staticmethod
-    def __arm_convert_value(s_id, s_angle):
-        if 0 < s_id < 5 == 1:
-            return int((3100 - 900) * (s_angle - 180) / (0 - 180) + 900)
-        elif s_id == 5:
-            return int((3700 - 380) * (s_angle - 0) / (270 - 0) + 380)
-        elif s_id == 6:
-            return int((3100 - 900) * (s_angle - 0) / (180 - 0) + 900)
-        else:
-            return -1
-
-    # Arm converts position pulses into angles
-    @staticmethod
-    def __arm_convert_angle(s_id, s_value):
-        if 0 < s_id < 5:
-            return int((s_value - 900) * (0 - 180) / (3100 - 900) + 180 + 0.5)
-        elif s_id == 5:
-            return int((270 - 0) * (s_value - 380) / (3700 - 380) + 0 + 0.5)
-        elif s_id == 6:
-            return int((180 - 0) * (s_value - 900) / (3100 - 900) + 0 + 0.5)
-        else:
-            return -1
-
     # Limit the PWM duty ratio value of motor input, value=127, keep the original data, do not modify the current motor speed
     def __limit_motor_value(self, value):
         if value == 127:
             return 127
         else:
-            return limit(value, -100, 100)
+            out = limit(value, -100, 100)
+            return 256 + out if out < 0 else out
 
     # Start the thread that receives and processes data
     def create_receive_threading(self):
@@ -383,8 +357,10 @@ class Rosmaster(object):
                 angle_s3 = 255
             if angle_s4 < 0 or angle_s4 > 180:
                 angle_s4 = 255
+
             cmd = [self.__HEAD, self.__DEVICE_ID, 0x00, self.FUNC_PWM_SERVO_ALL,
                    int(angle_s1), int(angle_s2), int(angle_s3), int(angle_s4)]
+
             cmd[2] = len(cmd) - 1
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
@@ -442,12 +418,24 @@ class Rosmaster(object):
     # Note, we may or may not use the integrated pid controller for it, idk.
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
-            t_speed_a = bytearray(struct.pack('b', self.__limit_motor_value(-speed_1)))
-            t_speed_b = bytearray(struct.pack('b', self.__limit_motor_value(speed_2)))
-            t_speed_c = bytearray(struct.pack('b', self.__limit_motor_value(-speed_3)))
-            t_speed_d = bytearray(struct.pack('b', self.__limit_motor_value(speed_4)))
+            if speed_1 == 127:
+                t_speed_a = 127
+            else:
+                t_speed_a = self.__limit_motor_value(speed_1)
+            if speed_2 == 127:
+                t_speed_b = 127
+            else:
+                t_speed_b = self.__limit_motor_value(speed_2)
+            if speed_3 == 127:
+                t_speed_c = 127
+            else:
+                t_speed_c = self.__limit_motor_value(speed_3)
+            if speed_4 == 127:
+                t_speed_d = 127
+            else:
+                t_speed_d = self.__limit_motor_value(speed_4)
             cmd = [self.__HEAD, self.__DEVICE_ID, 0x00, self.FUNC_MOTOR,
-                   t_speed_a[0], t_speed_b[0], t_speed_c[0], t_speed_d[0]]
+                   t_speed_a, t_speed_b, t_speed_c, t_speed_d]
             cmd[2] = len(cmd) - 1
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
@@ -525,7 +513,6 @@ class Rosmaster(object):
             time.sleep(.1)
         else:
             print("set_car_type input invalid")
-
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
 driver.create_receive_threading()

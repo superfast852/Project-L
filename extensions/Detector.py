@@ -1,5 +1,6 @@
 # IDEA: Directly implement SORT to the Detector class. Let's not lie to ourselves.
 from torch import device as torchdevice, from_numpy, tensor, randn
+from numba import njit
 import numpy as np
 import cv2
 from os import environ
@@ -199,7 +200,8 @@ if __name__ == "__main__":
         start = time()
         frame = cam.read()
         dets = model(frame)
-        dets.draw(frame)
+        if dets is not None:
+            dets.draw(frame)
         print(f"FPS: {1/(time()-start)}")
         cv2.imshow("hi", frame)
         cv2.waitKey(1)

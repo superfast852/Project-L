@@ -215,12 +215,17 @@ class XboxController(object):
         self.DD = 0
 
 
-# Think i should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
+# Think I should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
 def exceptionless_exec(f):
     try:
         f()
     except Exception as e:
         print(f"[ERROR] exceptionless_exec: {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
+
+
+# TODO: Implement logging prints, instead of rerouting stdout to a file.
+def lprint(msg, type, lg):
+    pass
 
 
 def find_port_by_vid_pid(vid, pid):
@@ -332,7 +337,7 @@ def evaluate_bezier(points, n):
     return np.array([fun(t) for fun in get_bezier_cubic(points) for t in np.linspace(0, 1, n)])
 
 
-def line2dots(line):
+def line2dots(line: list):
     x1, y1, x2, y2 = *line[0], *line[1]
     points = []
     issteep = abs(y2-y1) > abs(x2-x1)

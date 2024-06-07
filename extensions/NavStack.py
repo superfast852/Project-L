@@ -81,11 +81,10 @@ class Map:
         self.__init__(map)
 
     def fromSlam(self, map):
-        size = int(len(map) ** 0.5)  # get the shape for a square map (1d to 2d)
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
         # TODO: make a better converter to take advantage of the map info.
         # We can get unseen values and quality values.
-        map = ((np.array(map) - 73) / 255).reshape(size, size).round()
+        map = ((np.array(map) - 73) / 255).reshape(self.map.shape).round()  # Assume that the map given is the same size as the previous.
         self.map = np.logical_not(map).astype(int)
 
     def toSlam(self):
@@ -167,7 +166,10 @@ class Map:
                 cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
         if show:
             cv2.imshow("Map", img)
-        cv2.waitKey(1)
+            cv2.waitKey(1)
+        else:
+            return img
+
 
     def addPath(self, route: np.ndarray):
         try:
