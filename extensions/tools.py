@@ -223,6 +223,15 @@ def exceptionless_exec(f):
         print(f"[ERROR] exceptionless_exec: {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
 
 
+def check_killswitch(name: str = "killswitch.ks") -> bool:
+    with open("/proc/mounts", "r") as f:
+        mounts = filter(lambda x: x[0].startswith("/dev/"), [line.split()[:2] for line in f.readlines()])
+    for mount_point in mounts:
+        if path.exists(path.join(mount_point[1], name)):
+            return True
+    return False
+
+
 # TODO: Implement logging prints, instead of rerouting stdout to a file.
 def lprint(msg, type, lg):
     pass

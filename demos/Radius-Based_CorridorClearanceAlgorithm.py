@@ -26,36 +26,36 @@ def customWithin(points: np.ndarray, x: np.ndarray, r: float) -> np.ndarray:
     return points[within_radius]
 
 
-def sample_points_on_line(line_segment, d=None, p=None):
+def sample_points_on_line(line_segment, dist_points=None, n_points=10):
     # Extract start and end points
     start, end = np.array(line_segment[0]), np.array(line_segment[1])
     diff = end-start
     # Calculate the distance between the start and end points
-    line_length = np.linalg.norm(end - start)
-    if d is None:
-        p = p if p is not None else 10
-        d = line_length/p
-
-    # Determine the number of points to sample
-    num_samples = int(np.floor(line_length / d)) + 1
+    line_length = np.linalg.norm(diff)
+    if dist_points is None:
+        num_samples = n_points
+        dist_points = line_length / (num_samples - 1)
+    else:
+        num_samples = int(line_length / dist_points) + 1
 
     # Compute the points
-    coeff = d*diff/line_length
+    coeff = dist_points * diff / line_length
     sampled_points = np.round(np.array([i * coeff for i in range(num_samples)])+start)
 
     # Ensure the end point is included
-    if not np.isclose(sampled_points[-1], end, atol=d/2).all():
+    if not np.isclose(sampled_points[-1], end, atol=dist_points / 2).all():
         sampled_points = np.concatenate((sampled_points, np.expand_dims(end, 0)), 0)
 
     return np.unique(sampled_points, axis=0).astype(int)
 
 
 def intervalObstacleCheck(map, path, r=10, img=None):
-    obstacles = np.argwhere(map.map==1)
+    obstacles = np.argwhere(map.map.T==1)
     neighbors = []
     for line in path:
         out = []
         samples = sample_points_on_line(line, r)  # arrays with shape Nx2, points.
+        # wtf is this for?
         try:
             prev_sample = neighbors[-1][-1]
             if np.isclose(prev_sample, samples[0], atol=r/2).all() and prev_sample.size > 0:
@@ -69,7 +69,7 @@ def intervalObstacleCheck(map, path, r=10, img=None):
                 out.append(nearby)  # also Nx2
 
                 if img is not None:
-                    #map.drawPoint(img, sample, r, (0, 0, 255))  # where you sampled it
+                    # map.drawPoint(img, sample, r, (0, 0, 255))  # where you sampled it
                     for point in nearby:
                         map.drawPoint(img, point, 1, (0, 255, 0))  # the obstacles near the sample
         if out:
@@ -79,7 +79,9 @@ def intervalObstacleCheck(map, path, r=10, img=None):
     return neighbors
 
 
-def pathOptimizer(path, img, r=25):
+# TODO: This is very, VERY broken. it constantly collides without checking.
+def pathOptimizer(path, og_map, r=25):
+    map = Map(og_map.map.T)
     unique_points = planner.getEndPoints(path)
     if len(unique_points) == 2:
         return path
@@ -92,14 +94,14 @@ def pathOptimizer(path, img, r=25):
         testable = unique_points[i+1:]  # remove the current and previous points. They've already been analyzed.
         nearby = customWithin(testable, point, r)  # sample for the endpoints nearby
         # remove the points that have an obstacle between them.
-        nearby = np.array([i for i in nearby if planner.planner.collisionfree(np.rot90(planner.map.map), point, i)])
+        nearby = np.array([i for i in nearby if map.collision_free(point, i)])
 
         ## Candidate Selection
         if nearby.size > 0:  # This means that the path can be shortened.
             # get the best point to shorten to
             if len(nearby) > 1:
                 print(f"Multiple nearby points: {nearby}")
-                candidate = nearby[np.argmin(np.linalg.norm(nearby-point, axis=1))]
+                candidate = nearby[-1]# nearby[np.argmin(np.linalg.norm(nearby-point, axis=1))]
             else:
                 print(f"One nearby point: {nearby}")
                 candidate = nearby[0]
@@ -110,7 +112,7 @@ def pathOptimizer(path, img, r=25):
             shortened = shortenPath(unique_points, point, candidate)
             print("Found an optimization!")
             # run the optimizer on the shortened path
-            result_path = pathOptimizer(planner.endpointsToPath(shortened), img, r)
+            result_path = pathOptimizer(planner.endpointsToPath(shortened), map, r)
             break  # leave
     return result_path
 
@@ -150,9 +152,9 @@ while True:
         # First dim is each line.
         # Second dim is all the obstacles found in that line
         # Third dim is the point itself.
-        optimized = pathOptimizer(path, img, 25)
-        intervalObstacleCheck(map, optimized, 25, img)
-        map.addPath(path)
+        optimized = pathOptimizer(path, map, 100)
+        intervalObstacleCheck(map, path, 25, img)
+        #map.addPath(path)
         for i in range(len(optimized)):
             map.drawLine(img, optimized[i], (0, 0, 255))
             map.drawPoint(img, optimized[i][0], 4, (255, 0, 0))
@@ -167,7 +169,7 @@ while True:
         for point in route:
             map.drawPoint(img, point, 10)
         map.addPath(chain)
-    print(f"Time: {time()-tInit} seconds.")
+    print(f"Time: {1/(time()-tInit)} seconds.")
     for i in range(5):
         map.animate(img)
     sleep(5)
