@@ -93,6 +93,7 @@ def pathOptimizer(path, og_map, r=25):
             continue
         testable = unique_points[i+1:]  # remove the current and previous points. They've already been analyzed.
         nearby = customWithin(testable, point, r)  # sample for the endpoints nearby
+        print(testable.shape)
         # remove the points that have an obstacle between them.
         nearby = np.array([i for i in nearby if map.collision_free(point, i)])
 

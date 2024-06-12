@@ -10,7 +10,7 @@ def pymap(n, func):
     return map(func, n)
 
 
-class Map:
+class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown(-1) for Frontier Exploration.
     paths = []
 
     def __init__(self, map, map_meters=35):
@@ -82,7 +82,6 @@ class Map:
 
     def fromSlam(self, map):
         # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        # TODO: make a better converter to take advantage of the map info.
         # We can get unseen values and quality values.
         map = ((np.array(map) - 73) / 255).reshape(self.map.shape).round()  # Assume that the map given is the same size as the previous.
         self.map = np.logical_not(map).astype(int)
@@ -142,7 +141,7 @@ class Map:
         y = r * np.sin(pose[2])
         return (round(pose[0] - x), round(pose[1] - y)), (round(pose[0] + x), round(pose[1] + y))
 
-    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show=True):
+    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show="Map"):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
         if img is None:
             img = self.tocv2()
@@ -153,7 +152,7 @@ class Map:
                 except AttributeError:
                     pass
                 if path:
-                    cv2.circle(img, path[0][0], 5, (0, 0, 0), -1)
+                    cv2.circle(img, path[0][0], 5, (127, 127, 127), -1)
                     cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
                     color = np.random.randint(0, 256, 3).tolist()
                     for line in path:
@@ -165,7 +164,7 @@ class Map:
                 pt1, pt2 = self._posearrowext(pose, arrowLength/2)
                 cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
         if show:
-            cv2.imshow("Map", img)
+            cv2.imshow(show, img)
             cv2.waitKey(1)
         else:
             return img
@@ -269,20 +268,26 @@ class Node:
 
 
 class RRT:
-    def __init__(self, map, step_size=25, iterations=1000, debug=False):
+    def __init__(self, map: Map, step_size=25, iterations=1000, inflate=0, debug=False):
         self.map = map
         self.step_size = step_size
         self.iterations = iterations
         self.debug = debug
+        self.inflate = inflate
+        self.inflated = Map(self.map.map)
+        self.map_shape = self.map.map.shape
 
     def plan(self, start, end):
         start, end = np.array(start), np.array(end)
+        self.map_shape = self.map.map.shape
+        if self.inflate > 0:
+            self.inflated.map = self.gen_binary_cost(self.inflate, start=start, stop=end)
         if self.debug:
             self.img = self.map.tocv2()
             cv2.circle(self.img, start, 5, (0, 255, 0), -1)
             cv2.circle(self.img, end, 5, (0, 255, 0), -1)
         # If you can go straight to the goal, do it
-        if self.map.collision_free(start, end):
+        if self.inflated.collision_free(start, end):
             return [[start.tolist(), end.tolist()]]
 
         start_node = Node(*start)
@@ -296,7 +301,7 @@ class RRT:
             # Pick a random point in the map to explore
             # Oportunity: Reduce the randomness, to make certain-er paths
             # Maybe reduce the options to an ellipse between both points
-            random_point = Node(np.random.uniform(0, self.map.map.shape[0]), np.random.uniform(0, self.map.map.shape[1]))
+            random_point = Node(np.random.uniform(0, self.map_shape[0]), np.random.uniform(0, self.map_shape[1]))
             # Extend tree A towards the random point
             nearest_node_a = self._nearest(tree_a, random_point)
             new_node_a = self._steer(nearest_node_a, random_point)
@@ -353,13 +358,6 @@ class RRT:
             return new_node
         return None
 
-    @staticmethod
-    def _nearest(nodes, target):
-        # check the closest node to the target
-        distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
-        nearest_index = np.argmin(distances)
-        return nodes[nearest_index]
-
     def _rearrange(self, path, start, end):
         # Check if the path is inverse.
 
@@ -387,21 +385,6 @@ class RRT:
         out = a + b  # Join them back properly
         return self.restitch(out)
         # This is a continuity checker. It tries to patch holes in the path by connecting disjointed segments.
-
-    @staticmethod
-    def calculate_slope(p1, p2):
-        dx = p2[0] - p1[0]
-        dy = p2[1] - p1[1]
-        return dy / dx if dx != 0 else None  # Handle vertical lines
-
-    @staticmethod
-    def slopes_are_close(slope1, slope2, tolerance=0.1):
-        # not necesarily slopes, just comparing two numbers
-        if slope1 is None and slope2 is None:
-            return True
-        if slope1 is None or slope2 is None:
-            return False
-        return abs(slope1 - slope2) <= tolerance
 
     def extract_path(self, end_node, slope_tolerance=1e-1):
         # This traverses the tree and extracts the xy location of each node.
@@ -441,7 +424,7 @@ class RRT:
         return segments
 
     # Path Postprocessing methods
-    # Check this, it is probably very broken.
+    # TODO: Check this, it is probably very broken.
     def ecd_shortening(self, path, start, end):
         # This function clips the ends of the path to the nearest collision-free point.
         if len(path) == 1:
@@ -469,6 +452,29 @@ class RRT:
         # Replace all previous segments for the shortened segments.
         print(f"Final shortening: {new}")
         return new
+
+    def gen_binary_cost(self, inflation_r=8.5, start=None, stop=None):
+        '''
+        Inflates the obstacles in the map to create a binary cost map. This is useful for path planning.
+        :param og: The occupancy grid (map.map)
+        :param inflation_r: The inflation radius around the obstacles. A higher radius mean more centered paths, but less likely to generate a path. A smaller one means shorter paths, but closer to walls.
+        :param start: The start point of the path
+        :param stop: The end point of the path
+        :return: Inflated binary cost map
+        '''
+        if inflation_r < 0:
+            raise ValueError("Inflation coefficient must be positive")
+
+        cut = round(inflation_r)
+
+        sample = np.logical_not(self.map.map).astype(np.uint8)
+        edt = cv2.distanceTransform(sample, cv2.DIST_L2, 3)
+        sample[edt < inflation_r] = 0
+        out = np.logical_not(sample)
+        if start is not None:  # If start is not None, then end mustn't be either.
+            out[start[1] - cut:start[1] + cut, start[0] - cut:start[0] + cut] = 0
+            out[stop[1] - cut:stop[1] + cut, stop[0] - cut:stop[0] + cut] = 0
+        return out
 
     @staticmethod
     def restitch_end(path):  # This line end stitching happens when the final segment is the end point repeated.
@@ -518,3 +524,25 @@ class RRT:
     @staticmethod
     def isValidPath(path):
         return (path is not None) and len(path) > 0
+
+    @staticmethod
+    def calculate_slope(p1, p2):
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+        return dy / dx if dx != 0 else None  # Handle vertical lines
+
+    @staticmethod
+    def slopes_are_close(slope1, slope2, tolerance=0.1):
+        # not necesarily slopes, just comparing two numbers
+        if slope1 is None and slope2 is None:
+            return True
+        if slope1 is None or slope2 is None:
+            return False
+        return abs(slope1 - slope2) <= tolerance
+
+    @staticmethod
+    def _nearest(nodes, target):
+        # check the closest node to the target
+        distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
+        nearest_index = np.argmin(distances)
+        return nodes[nearest_index]
