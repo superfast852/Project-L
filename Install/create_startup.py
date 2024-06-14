@@ -1,0 +1,19 @@
+import os
+import sys
+home = os.environ["HOME"]
+
+name = sys.argv[1]; command = sys.argv[2]
+
+launcher = ["[Desktop Entry]", f"Name=Project-L Main", f"Exec=cd /home/$(whoami)/Project-L && python3 main.py &", "Type=Application", "X-GNOME-Autostart-enabled=true"]
+dr = home+"/.config/autostart/"
+if not os.path.exists(dr):
+    os.makedirs(dr)
+file = dr+name.lower()+".desktop"
+
+if not os.path.exists(file):
+    with open(file, "wt") as out:
+        for l in launcher:
+            out.write(l+"\n")
+    print("[Startup Script Creator] File created successfully")
+else:
+    print("[Startup Script Creator] File exists, choose another name")
