@@ -1,5 +1,4 @@
 import os
-import sys
 home = os.environ["HOME"]
 
 launcher = ["[Desktop Entry]", f"Name=Project-L Main", f"Exec=cd /home/$(whoami)/Project-L && python3 main.py &", "Type=Application", "X-GNOME-Autostart-enabled=true"]
