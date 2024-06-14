@@ -1,10 +1,11 @@
-# TODO: Add logging, adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
+# TODO: Adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
 # NOTE: In the driver code, motors 1 and 3 are flipped.
 
 from threading import Thread
 from _thread import interrupt_main
 from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
 from extensions.NavStack import SLAM
+from extensions.logs import logging
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar, RPLidarException
 from itertools import groupby
@@ -14,7 +15,9 @@ import time
 import serial
 import threading
 import ikpy.chain
+
 global_start = time.time()
+logger = logging.getLogger(__name__)
 
 # V1.7.3
 class Rosmaster(object):
@@ -123,19 +126,20 @@ class Rosmaster(object):
         self.__AKM_SERVO_ID = 0x01
 
         if self.__debug:
-            print("cmd_delay=" + str(self.__delay_time) + "s")
+            logger.debug("[Driver] cmd_delay=" + str(self.__delay_time) + "s")
 
         if self.ser.isOpen():
-            print("Rosmaster Serial Opened! Baudrate=115200")
+            logger.info("[Driver] Rosmaster Serial Opened.")
             self.set_car_type(car_type)
         else:
-            print("Serial Open Failed!")
+            logger.error("[Driver] Serial Open Failed!")
+            raise OSError("Serial Open Failed!")
         time.sleep(.002)
 
     def __del__(self):
         self.ser.close()
         self.__uart_state = 0
-        print("serial Close!")
+        logger.info("[Driver] serial Close!")
         del self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -143,11 +147,7 @@ class Rosmaster(object):
 
     # According to the type of data frame to make the corresponding parsing
     def __parse_data(self, ext_type, ext_data):
-        # print(ext_type, " ", ext_data)
-
-        # print("parse_data:", ext_data, ext_type)
         if ext_type == self.FUNC_REPORT_SPEED:
-            print()
             self.__vx = int(struct.unpack('h', bytearray(ext_data[0:2]))[0]) / 1000.0
             self.__vy = int(struct.unpack('h', bytearray(ext_data[2:4]))[0]) / 1000.0
             self.__vz = int(struct.unpack('h', bytearray(ext_data[4:6]))[0]) / 1000.0
@@ -180,7 +180,6 @@ class Rosmaster(object):
         elif ext_type == self.FUNC_REPORT_ENCODER:
             self.prev_enc = self.encoders.copy()
             steps = list(range(0, 17, 4))
-            print(ext_data)
             self.encoders = [struct.unpack('i', bytearray(ext_data[steps[i]:steps[i+1]]))[0] for i in range(len(steps)-1)]
             timing = time.time()
             time_diff = timing-self.last_update
@@ -192,8 +191,6 @@ class Rosmaster(object):
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
             self.__read_val = struct.unpack('h', bytearray(ext_data[1:3]))[0]
-            if self.__debug:
-                print("FUNC_UART_SERVO:", self.__read_id, self.__read_val)
 
         elif ext_type == self.FUNC_ARM_CTRL:
             self.__read_arm[0] = struct.unpack('h', bytearray(ext_data[0:2]))[0]
@@ -203,36 +200,26 @@ class Rosmaster(object):
             self.__read_arm[4] = struct.unpack('h', bytearray(ext_data[8:10]))[0]
             self.__read_arm[5] = struct.unpack('h', bytearray(ext_data[10:12]))[0]
             self.__read_arm_ok = 1
-            if self.__debug:
-                print("FUNC_ARM_CTRL:", self.__read_arm)
 
         elif ext_type == self.FUNC_VERSION:
             self.__version_H = struct.unpack('B', bytearray(ext_data[0:1]))[0]
             self.__version_L = struct.unpack('B', bytearray(ext_data[1:2]))[0]
-            if self.__debug:
-                print("FUNC_VERSION:", self.__version_H, self.__version_L)
 
         elif ext_type == self.FUNC_SET_MOTOR_PID:
             self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
             self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
             self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
             self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
-            if self.__debug:
-                print("FUNC_SET_MOTOR_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
 
         elif ext_type == self.FUNC_SET_YAW_PID:
             self.__pid_index = struct.unpack('B', bytearray(ext_data[0:1]))[0]
             self.__kp1 = struct.unpack('h', bytearray(ext_data[1:3]))[0]
             self.__ki1 = struct.unpack('h', bytearray(ext_data[3:5]))[0]
             self.__kd1 = struct.unpack('h', bytearray(ext_data[5:7]))[0]
-            if self.__debug:
-                print("FUNC_SET_YAW_PID:", self.__pid_index, [self.__kp1, self.__ki1, self.__kd1])
 
         elif ext_type == self.FUNC_ARM_OFFSET:
                 self.__arm_offset_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
                 self.__arm_offset_state = struct.unpack('B', bytearray(ext_data[1:2]))[0]
-                if self.__debug:
-                    print("FUNC_ARM_OFFSET:", self.__arm_offset_id, self.__arm_offset_state)
 
     def __receive_data(self):
         while self.__uart_state:
@@ -259,7 +246,7 @@ class Rosmaster(object):
                         self.__parse_data(ext_type, ext_data)
                     else:
                         if self.__debug:
-                            print("check sum error:", ext_len, ext_type, ext_data)
+                            logging.debug(f"[Driver] check sum error: {ext_len, ext_type, ext_data}")
 
     # Limit the PWM duty ratio value of motor input, value=127, keep the original data, do not modify the current motor speed
     def __limit_motor_value(self, value):
@@ -278,10 +265,10 @@ class Rosmaster(object):
                 task_receive = threading.Thread(target=self.__receive_data, name=name1)
                 task_receive.setDaemon(True)
                 task_receive.start()
-                print("----------------create receive threading--------------")
+                logger.info("[Driver] ----------------create receive threading--------------")
         except Exception as e:
-            print('---create_receive_threading error!---')
-            print(e)
+            logger.error(f'[Driver]---create_receive_threading error: {e}')
+            raise e
             pass
 
     # The MCU automatically returns the data status bit, which is enabled by default. If the switch is closed, the data reading function will be affected.
@@ -296,8 +283,6 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("report:", cmd)
             time.sleep(self.__delay_time)
         except Exception as e:
             print('---set_auto_report_state error!---')
@@ -309,7 +294,7 @@ class Rosmaster(object):
     def set_beep(self, on_time):
         try:
             if on_time < 0:
-                print("beep input error!")
+                logger.warning("[Driver] beep input error!")
                 return
             value = bytearray(struct.pack('h', int(on_time)))
 
@@ -318,11 +303,10 @@ class Rosmaster(object):
             cmd.append(checksum)
             self.ser.write(cmd)
             if self.__debug:
-                print("beep:", cmd)
+                logger.debug("beep:", cmd)
             time.sleep(self.__delay_time)
         except Exception as e:
-            print('---set_beep error!---')
-            print(e)
+            logger.warning(f'[Driver] ---set_beep error: {e}')
             pass
 
     # servo_id=[1, 4], angle=[0, 180]
@@ -331,7 +315,7 @@ class Rosmaster(object):
         try:
             if not 1 <= servo_id <= 4:
                 if self.__debug:
-                    print("set_pwm_servo input invalid")
+                    logger.debug("[Driver] set_pwm_servo input invalid")
                 return
             angle = limit(angle, 0, 180)
             cmd = [self.__HEAD, self.__DEVICE_ID, 0x00, self.FUNC_PWM_SERVO, int(servo_id), int(angle)]
@@ -340,11 +324,11 @@ class Rosmaster(object):
             cmd.append(checksum)
             self.ser.write(cmd)
             if self.__debug:
-                print("pwmServo:", cmd)
+                logger.debug(f"pwmServo: {cmd}")
             time.sleep(self.__delay_time)
-        except:
-            print('---set_pwm_servo error!---')
-            pass
+        except Exception as e:
+            logger.warning(f'---set_pwm_servo error: {e}')
+
 
     # At the same time control four PWM Angle, angle_sX=[0, 180]
     def set_pwm_servo_all(self, angle_s1, angle_s2, angle_s3, angle_s4):
@@ -365,11 +349,9 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("all Servo:", cmd)
             time.sleep(self.__delay_time)
         except:
-            print('---set_pwm_servo_all error!---')
+            logger.warning('[Driver] ---set_pwm_servo_all error!---')
             pass
 
     # RGB control, can be controlled individually or collectively, before control need to stop THE RGB light effect.
@@ -386,11 +368,9 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("rgb:", cmd)
             time.sleep(self.__delay_time)
         except:
-            print('---set_colorful_lamps error!---')
+            logger.warning('[Driver] ---set_colorful_lamps error!---')
             pass
 
     # RGB programmable light band special effects display.
@@ -407,11 +387,9 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("rgb_effect:", cmd)
             time.sleep(self.__delay_time)
         except:
-            print('---set_colorful_effect error!---')
+            logger.warning('[Driver] ---set_colorful_effect error!---')
             pass
 
     # Control PWM pulse of motor to control speed (speed measurement without encoder). speed_X=[-100, 100]
@@ -441,11 +419,11 @@ class Rosmaster(object):
             cmd.append(checksum)
             self.ser.write(cmd)
             if self.__debug:
-                print("motor:", cmd)
+                logger.debug(f"[Driver] motor: {cmd}")
             time.sleep(self.__delay_time)
         except IndexError as e:
-            print('---set_motor error!---: ', e)
-            pass
+            logger.warning(f'---set_motor error: {e}')
+
 
     # Clear the cache data automatically sent by the MCU
     def clear_auto_report_data(self):
@@ -465,8 +443,6 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("flash:", cmd)
             time.sleep(self.__delay_time)
             time.sleep(.1)
         except:
@@ -499,6 +475,9 @@ class Rosmaster(object):
     def get_motor_encoder(self):
         return self.encoders
 
+    def get_motion_data(self):
+        return self.__vx, self.__vy, self.__vz
+
     # Set car Type
     def set_car_type(self, car_type):
         if str(car_type).isdigit():
@@ -508,8 +487,6 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            if self.__debug:
-                print("car_type:", cmd)
             time.sleep(.1)
         else:
             print("set_car_type input invalid")
@@ -545,9 +522,8 @@ class Drive:  # TODO: Implement self.max properly
     # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0):
         theta = getAngle(y, x)
-        #theta = rawTheta - math.pi / 2 if rawTheta > math.pi / 2 else 2 * math.pi - rawTheta
         if theta in self.collision_fn(self.arg):
-            print("[WARNING] Drive: Would Collide!")
+            logger.warning("[Drive] Would Collide at angle "+str(theta))
             self.brake()
             return 0, 0, 0, 0
 
@@ -766,7 +742,7 @@ class Battery:
         while True:
             voltage = self.get_voltage()
             if voltage <= self.threshold:
-                print("[CRITICAL] Battery levels too low! Voltage: ", voltage)
+                logger.critical("[RM_HAL] Battery levels too low! Voltage: ", voltage)
                 for i in range(5):
                     driver.set_beep(100)
                     sleep(0.2)
@@ -783,7 +759,7 @@ class RP_A1(RPLidarA1):
         super().__init__()
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.lidar = RPLidar(port, baudrate, timeout)
-        print(self.lidar.get_info(), self.lidar.get_health())
+        logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
         self.lidar.clean_input()
         self.scanner = self.lidar.iter_scans(scan_type, False, 10)
 
@@ -808,7 +784,7 @@ class RP_A1(RPLidarA1):
             while self.t:
                 self.latest = self.read()
         except RPLidarException as e:
-            print(f"[ERROR] RPLidar: {e} | {e.args}")
+            logger.error(f"{RPLidar}: {e} | {e.args}")
             interrupt_main()
 
     def threaded_mapping(self, mapping: SLAM):

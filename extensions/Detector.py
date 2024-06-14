@@ -11,8 +11,9 @@ try:
     from .sort import Sort
 except ImportError:
     from sort import Sort
+from extensions.logs import logging
 environ['CUDA_MODULE_LOADING'] = 'LAZY'
-
+logger = logging.getLogger(__name__)
 
 class Detections:
     def __init__(self, tracker, dets, track=True):
@@ -94,6 +95,7 @@ class Detector:
         del name, dtype, shape, data, tmp, logs  # Clear some memory
 
         self.binding_addrs, self.bindings, self.context = binding_addrs, bindings, context
+        logger.log("[Detector/Detector] TRT Detector setup successfully.", logging.INFO)
 
     def _postprocess(self, boxes):  # Normalize bounding box from preprocessed image to actual image
         self.dwdh = tensor(self.dwdh * 2).to(boxes.device)

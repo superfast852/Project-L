@@ -7,7 +7,8 @@ from serial.tools.list_ports import comports
 from numba import njit
 from evdev import InputDevice
 from time import sleep, time
-
+from extensions.logs import logging
+logger = logging.getLogger(__name__)
 
 class XboxController(object):
     MAX_TRIG_VAL = 1024
@@ -67,6 +68,7 @@ class XboxController(object):
             except OSError:
                 continue
         else:
+            logger.error("[tools/XboxController]: No controller found.")
             raise OSError("No controller found")
 
     def read(self):  # return the buttons/triggers that you care about in this methode
@@ -86,6 +88,7 @@ class XboxController(object):
                 if self.conn_t != start:
                     break
                 if not path.exists(self.device_file):
+                    logger.warning("Controller has disconnected. Trying to reconnect...")
                     print("Controller has disconnected. Trying to reconnect...")
                     # Indicates that the controller disconnected.
                     for i in range(self.retries):
@@ -98,6 +101,7 @@ class XboxController(object):
                         except OSError:
                             sleep(self.stall)
                     else:  # If the max amount of retries is reached
+                        logger.error("[tools/XboxController]: Could not reconnect to controller.")
                         raise OSError("[ERROR] Controller: Could not reconnect to controller.")
                     continue
 
@@ -156,7 +160,8 @@ class XboxController(object):
                         self.Start = event.value
 
         except Exception as e:
-            print(e)
+            logger.error(f"[tools/XboxController]: {e}")
+            logger.warning("Controller has disconnected. Trying to reconnect...")
             print("Controller has disconnected. Trying to reconnect...")
             self.reset()
             self.atloss()
@@ -171,6 +176,7 @@ class XboxController(object):
                 except OSError:
                     sleep(self.stall)
             else:  # If the max amount of retries is reached
+                logger.error("[tools/XboxController]: Could not reconnect to controller.")
                 raise OSError("[ERROR] Controller: Could not reconnect to controller.")
 
     @staticmethod
@@ -182,7 +188,6 @@ class XboxController(object):
         last = False
         def trigger(**kwargs):
             nonlocal last
-            print(kwargs)
             while True:
                 button = getattr(self, button_name)
                 pulse, last = self.edge(button, last, rising)
@@ -190,7 +195,7 @@ class XboxController(object):
                     f(**kwargs)
                 sleep(polling)
         Thread(target=trigger, kwargs=kwargs, daemon=True).start()
-        print(f"Trigger set for {button_name} button.")
+        logger.debug(f"Trigger set for {button_name} button.")
 
     def reset(self):
         self.LJoyY = 0
@@ -220,7 +225,7 @@ def exceptionless_exec(f):
     try:
         f()
     except Exception as e:
-        print(f"[ERROR] exceptionless_exec: {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
+        logger.warning(f"[exceptionless_exec] {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
 
 
 def check_killswitch(name: str = "killswitch.ks") -> bool:
@@ -232,16 +237,10 @@ def check_killswitch(name: str = "killswitch.ks") -> bool:
     return False
 
 
-# TODO: Implement logging prints, instead of rerouting stdout to a file.
-def lprint(msg, type, lg):
-    pass
-
-
 def find_port_by_vid_pid(vid, pid):
     ports = list(comports())
 
     for port in ports:
-        print()
         if port.vid == vid and port.pid == pid:
             return port.device
     return None
@@ -396,7 +395,6 @@ def getLabelsFromTxt(path="coco-lbl.txt", verbose=True):
     with open(path, "r") as lbls:  # Open txt file
         a = lbls.read()  # Read txt file
         b = a.split('\n')  # Split by every line into list
-        if verbose: print("Labels Extracted: ", b)  # print extracted list
         return b
 
 coco = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',

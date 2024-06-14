@@ -9,9 +9,9 @@ from time import perf_counter
 class BenchBot:
     # Slam Algorithm Time: 0.15378022193908691
     def __init__(self):
-        self.detector = Detector("./Resources/yolov7-tiny-nms.trt", track=False)
+        #self.detector = Detector("./Resources/yolov7-tiny-nms.trt", track=False)
         self.cam = Camera()
-        self.cam.start()
+        #self.cam.start()
         self.map = Map("random")
         self.rrt = RRT(Map("random"))
         self.slam = SLAM(None, self.map)
@@ -62,10 +62,10 @@ class BenchBot:
         self.frame = frame
 
     def rrtops(self):  # please note, try these independently, as it's supposed to be used sparsely.
-        tstart = perf_counter()
         start = self.map.getValidPoint()
         stop = self.map.getValidPoint()
-        path = self.rrt.plan(start, stop)
+        tstart = perf_counter()
+        self.rrt.plan(start, stop)
         return perf_counter()-tstart
 
     def slamops(self):
@@ -79,15 +79,15 @@ class BenchBot:
 
 
 if __name__ == "__main__":
-    # Pre optimization value: 152.1791710853688 ms
-    # POST OPTIMIZATION VALUE: 3.448326349258423 ms
+    # Pre optimization value: 152.1791710853688 ms, about 6.6 fps
+    # POST OPTIMIZATION VALUE: 3.448326349258423 ms, ABOUT 300 GODDAMN FPS
     # og new method: 0.0035310662984848022
     # alt method 1: 0.003485587811470032 (10k iters)
     # HOLY SHIT
+    from tqdm import tqdm
     bench = BenchBot()
     timing = []
-    for i in range(100):
-        print(f"Iteration: {i}")
+    for i in tqdm(range(1000)):
         timing.append(bench.rrtops())
     bench.cam.stop()
     print(f"RRT Performance: {len(timing)/sum(timing)}")

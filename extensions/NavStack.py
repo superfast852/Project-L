@@ -4,7 +4,8 @@ from breezyslam.algorithms import RMHC_SLAM
 from pickle import dump, load
 import numpy as np
 import cv2
-
+from extensions.logs import logging
+logger = logging.getLogger(__name__)
 
 def pymap(n, func):
     return map(func, n)
@@ -41,6 +42,7 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
                 else:
                     self.__init__(values)
             else:
+                logger.error("[NavStack/Map] Could not load map from file.")
                 raise ValueError("Could not extract map from .pkl file.")
 
         elif isinstance(map, bytearray):
@@ -72,6 +74,7 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
             self.map = np.zeros((map, map), dtype=int)
 
         else:
+            logger.error("[NavStack/Map] Map format unidentified.")
             raise ValueError("Map format unidentified.")
         self.map_center = [i//2 for i in self.map.shape]
         if self.map_meters is None:
@@ -97,7 +100,7 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
             del datetime
         with open(name, "wb") as f:
             dump(self.map, f)
-        print(f"[INFO] Saved Map as {name}!")
+        logging.info(f"[NavStack/Map] Saved Map as {name}!")
 
     def isValidPoint(self, point):
         return not self.map[point[1], point[0]]
@@ -111,12 +114,13 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
 
     def __getitem__(self, item):
         if len(item) != 2:
+            logger.error("[NavStack/Map] Index of the map must be a point (X, Y).")
             raise IndexError("Index of the map must be a point (X, Y).")
         return self.map[item[1], item[0]]
 
-    def tocv2(self, invert=True):
+    def tocv2(self, invert=True, gray=False):
         map = self.map if not invert else np.logical_not(self.map)  # we're not applying transformations to the image.
-        return cv2.cvtColor(map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
+        return map if gray else cv2.cvtColor(map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
 
     def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
         return cv2.circle(img, point, r, c, t)
@@ -180,7 +184,7 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
         except TypeError:  # If we could not convert to an integer,
             [self.paths.append(i) for i in route]  # It means that route[0][0][0] was an array.
         except IndexError:  # If the probe was not successful, it's invalid.
-            print("Empty or Invalid path provided.")
+            logging.error("[NavStack/Map] Empty or Invalid path provided.")
 
     def collision_free(self, a, b) -> bool:
         x1, y1, x2, y2 = *a, *b
@@ -237,6 +241,7 @@ class SLAM:
 
     def update(self, distances, angles, odometry=None):
         if angles is None:
+            logger.error("[NavStack/SLAM] Angles are required for SLAM. The array method has been deprecated.")
             raise ValueError("Angles are required for SLAM. The array method has been deprecated.")
         self.slam.update(distances, odometry, angles, self.ShouldUpdate)
         # keep in mind that SLAM basically remains running on its own map. So no need to worry about data loss
@@ -365,10 +370,6 @@ class RRT:
         if np.argwhere(np.all(path[0] == end, axis=-1)).size != 0:
             path.reverse()
 
-        # Second, if the start point is at the end
-        elif np.argwhere(np.all(path[-1] == start, axis=-1)).size != 0:
-            raise ValueError(f"Inverted at second check.")
-
         # This is a continuity checker, i think?
         # Yes, this loop stops when i is a broken bond.
         last = path[0][1]
@@ -429,7 +430,6 @@ class RRT:
         # This function clips the ends of the path to the nearest collision-free point.
         if len(path) == 1:
             return path
-        print(f"Shortening path...")
         furthest_start = 0
         soonest_end = None
         map = self.map
@@ -443,14 +443,10 @@ class RRT:
 
         new = [[start.tolist(), path[furthest_start][0]]] + path[furthest_start:soonest_end]
         if path[soonest_end][0] == end.tolist():
-            print("End path will repeat")
-            print(new + [[path[soonest_end][0], end.tolist()]])
             new.append([path[soonest_end - 1][1], end.tolist()])
-            print(new)
         else:
             new += [[path[soonest_end][0], end.tolist()]]
         # Replace all previous segments for the shortened segments.
-        print(f"Final shortening: {new}")
         return new
 
     def gen_binary_cost(self, inflation_r=8.5, start=None, stop=None):
@@ -463,6 +459,7 @@ class RRT:
         :return: Inflated binary cost map
         '''
         if inflation_r < 0:
+            logger.error("[NavStack/RRT] Inflation coefficient must be positive.")
             raise ValueError("Inflation coefficient must be positive")
 
         cut = round(inflation_r)
@@ -483,7 +480,6 @@ class RRT:
         # This can lead to a serious mistake.
         end, prev = path[-1], path[-2]
         if prev[1] != end[0]:
-            print(f"Stitching end: {path}")
             return path[:-1] + [[prev[1], end[0]]] + [path[-1]]
         return path
 

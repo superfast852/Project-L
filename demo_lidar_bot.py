@@ -1,18 +1,14 @@
-import sys
-import datetime
-now = datetime.datetime.now
-sys.stdout = open("out.log", "a")
-sys.stderr = sys.stdout
-print(f"Started at {now()}")
-
 from extensions.tools import XboxController
+from extensions.logs import logging
 from Robots.RM_HAL import Drive, RP_A1, MecanumKinematics
 from extensions.NavStack import SLAM, Map
 from time import sleep
 from networktables import NetworkTables
 import atexit
 import signal
-
+import datetime
+now = datetime.datetime.now
+logger = logging.getLogger(__name__)
 
 drive = Drive()
 map = Map(800)
@@ -48,7 +44,7 @@ def kill(*args, **kwargs):
     drive.exit()
     NetworkTables.stopServer()
     NetworkTables.shutdown()
-    print("Exited gracefully.")
+    logger.info(f"[{__name__}]Exited gracefully.")
     killsig = True
 
 
@@ -71,7 +67,6 @@ while True:
         botTable.putNumberArray("kine", kine.pose)
         sleep(1/60)
     except Exception as e:
-        print(f"[ERROR] demo_bot: {e}\n{e.args}")
+        logger.error(f"{__name__}: {e}\n{e.args}")
         kill()
-print(f"Ended at {now()}\n\n")
-sys.stdout.close()
+logger.info(f"Ended at {now()}\n\n")

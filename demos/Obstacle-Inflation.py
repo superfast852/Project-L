@@ -47,6 +47,15 @@ def test():
         map.animate()
 
 
+def centerliner():
+    map = Map("random")
+    sample = np.logical_not(map.map).astype(np.uint8)
+    dtrans = cv2.distanceTransform(sample, cv2.DIST_L2, 3)
+    dtrans = cv2.normalize(dtrans, None, 0, 255, cv2.NORM_MINMAX)
+    cv2.imshow("Distance Transform", dtrans)
+    cv2.waitKey(0)
+
+
 def measure_inflation():
     img = np.ones((800, 800), np.uint8)*255
     cv2.circle(img, (400, 400), 200, 0, -1)
@@ -70,4 +79,5 @@ def measure_inflation():
     cv2.waitKey(0)
 
 
-test()
+#test()
+centerliner()

@@ -1,7 +1,7 @@
 from threading import Thread
 import cv2
-from extensions.tools import np
-
+from extensions.logs import logging
+logger = logging.getLogger(__name__)
 
 class Camera:
     def __init__(self, src=0, res=None):
@@ -32,6 +32,7 @@ class Camera:
             return self.frame.copy()
         except AttributeError:
             print("Frame not found.")
+            logger.error("[FastCam/Camera] Frame not found.")
 
     def stop(self):
         self.stopped = True
@@ -61,7 +62,7 @@ class Stereo:
             self.depth_frame.start()
             self.stopped = 0
         else:
-            print("Stereo already started.")
+            logger.warning("Stereo already started.")
         return self
 
     def __del__(self):
@@ -91,6 +92,7 @@ class Stereo:
             return self.frames[id].copy()
         except IndexError:
             print("[FastCam][ERROR]: Invalid frame ID.")
+            logger.error("[FastCam/Stereo] Invalid frame ID.")
 
     def stop(self):
         self.stopped = 1
