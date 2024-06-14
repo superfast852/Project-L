@@ -174,7 +174,7 @@ main () {
     PYTHON_PATH="/usr/local/lib/python${PYTHON_VERSION}/site-packages"
 
     # Export the PYTHONPATH
-    export PYTHONPATH="${PYTHON_PATH}:${PYTHONPATH}"
+    echo 'export PYTHONPATH="${PYTHON_PATH}:${PYTHONPATH}"' >> ~/.bashrc
 
     # Print the PYTHONPATH to verify
     echo "PYTHONPATH is set to: $PYTHONPATH"
