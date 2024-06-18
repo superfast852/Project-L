@@ -5,16 +5,18 @@ from pickle import dump, load
 import numpy as np
 import cv2
 from extensions.logs import logging
+from icp import ICP
+from numba import njit, prange
 logger = logging.getLogger(__name__)
 
 def pymap(n, func):
     return map(func, n)
 
 
-class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown(-1) for Frontier Exploration.
+class Map:
     paths = []
 
-    def __init__(self, map, map_meters=35):
+    def __init__(self, map="random", map_meters=35):
         # The IR Map is just the RRT Map format.
         self.map_meters = None
         if isinstance(map, str):
@@ -158,9 +160,8 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
                 if path:
                     cv2.circle(img, path[0][0], 5, (127, 127, 127), -1)
                     cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
-                    color = np.random.randint(0, 256, 3).tolist()
                     for line in path:
-                        cv2.line(img, *line, color)
+                        cv2.line(img, *line, [211, 85, 186])
         if pose is not None:
             if pose == "center":
                 cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
@@ -214,7 +215,7 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
             else:
                 point = (x, y)
             try:
-                if self.map[point[1], point[0]]:  # there is an obstacle
+                if self.map[point[1], point[0]] == 1:  # there is an obstacle
                     return False
             except IndexError:  # Hotfix: Out of Bounds check.
                 return False
@@ -223,6 +224,143 @@ class Map:  # TODO: Make the map contain values Occupied(1), Free(0) and Unknown
                 y += ystep
                 error += deltax
         return True
+
+
+class TransientMap(Map):
+    def __init__(self, map="random", map_meters=35):
+        # The IR Map is just the RRT Map format.
+        super().__init__(1, map_meters)
+        self.map_meters = None
+
+        if isinstance(map, str):
+            if map.lower() == "random":
+                # Get a randomly generated map for testing.
+                try:
+                    self.map = np.load("./Resources/map.npy")  # Formatted as an RRT Map.
+                except FileNotFoundError:
+                    self.map = np.load("../Resources/map.npy")
+                self.map_meters = 35
+            elif map.endswith(".pkl"):
+                with open(map, "rb") as f:
+                    values = load(f)
+                if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
+                    meters, bytearr = values
+                    if isinstance(bytearr, bytearray):
+                        self.fromSlam(bytearr)
+                        self.map_meters = meters
+                    else:
+                        self.__init__(values, meters)
+                else:
+                    self.__init__(values)
+            else:
+                logger.error("[NavStack/Map] Could not load map from file.")
+                raise ValueError("Could not extract map from .pkl file.")
+
+        elif isinstance(map, bytearray):
+            # convert from slam to IR
+            # Slam maps are bytearrays that represent the SLAM Calculated map. Higher the pixel value, clearer it is.
+            self.fromSlam(map)
+
+        elif isinstance(map, np.ndarray):
+            if np.max(map) > 1:
+                self.map = self.nb_transient(map.flatten()) if map.ndim == 2 else self.nb_transient(map)
+            else:  # If we get an IR Map, we just use it.
+                self.map = map
+
+        elif isinstance(map, int):
+            # generate a blank IR Map
+            self.map = np.ones((map, map), dtype=int)*-1
+
+        else:
+            logger.error("[NavStack/Map] Map format unidentified.")
+            raise ValueError("Map format unidentified.")
+
+        self.map_center = (self.map.shape[0]//2, )*2  # These are all square maps, so no need to worry.
+
+        if self.map_meters is None:
+            self.map_meters = map_meters
+
+    def fromSlam(self, map: bytearray):
+        self.map = self.nb_transient(np.array(map)).astype(int)
+
+    @staticmethod
+    @njit(parallel=True)
+    def nb_transient(map_array: np.ndarray) -> np.ndarray:
+        tol = 1e-2
+        len = int(map_array.size ** 0.5)
+        map = (map_array.reshape(len, len) - 73) / 255
+        for i in prange(map.shape[0]):
+            for j in range(map.shape[1]):
+                if abs(map[i, j] - (54 / 255)) < tol:
+                    map[i, j] = -1
+
+        mask = map != -1
+
+        for i in prange(map.shape[0]):
+            for j in range(map.shape[1]):
+                if mask[i, j]:
+                    map[i, j] = np.logical_not(round(map[i, j]))
+
+        return map
+
+    def toSlam(self):
+        map = self.map.copy()
+        map[map == -1] = 127
+        map[map == 0] = 255
+        map[map == 1] = 0
+        return bytearray(map.flatten())
+
+    def isValidPoint(self, point, unknown=False):
+        return self.map[point[1], point[0]] == 0 if not unknown else self.map[point[1], point[0]] != 1
+
+    def getValidPoint(self, unknown=False) -> tuple:
+        free = np.argwhere(self.map == 0) if not unknown else np.argwhere(self.map != 1)
+        return tuple(free[np.random.randint(0, free.shape[0])][::-1])  # flip to get as xy
+
+    def tocv2(self, invert=1):  # oh boy.
+        if invert:
+            map = self.map.copy()
+            mask = map != -1
+            map[mask] = (1 - map[mask])*255
+            map[map == -1] = 127
+        else:
+            map = self.map.copy()*255
+            map[map == -255] = 127
+        return cv2.cvtColor(map.astype(np.uint8), cv2.COLOR_GRAY2BGR)
+
+    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show="Map"):
+        # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
+        if img is None:
+            img = self.tocv2()
+        if drawLines:
+            for path in self.paths:
+                try:
+                    path = path.tolist()
+                except AttributeError:  # Means it's already a list.
+                    pass
+                if path:
+                    cv2.circle(img, path[0][0], 5, (127, 127, 127), -1)
+                    cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
+                    for line in path:
+                        cv2.line(img, *line, [211, 85, 186])
+        if pose is not None:
+            if pose == "center":
+                cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
+            else:
+                pt1, pt2 = self._posearrowext(pose, arrowLength/2)
+                cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
+        if show:
+            cv2.imshow(show, img)
+            cv2.waitKey(1)
+        else:
+            return img
+
+    def binary(self, val=1):
+        map = self.map.copy()
+        map[map == -1] = val
+        return val
+
+
 
 class SLAM:
     def __init__(self, lidar=None, map_handle=None, update_map=1):
@@ -542,3 +680,42 @@ class RRT:
         distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
         nearest_index = np.argmin(distances)
         return nodes[nearest_index]
+
+
+class IterativeClosestPoint:
+    def __init__(self, iter=100, err=1e-6, trace=False):
+        self.iterations = iter
+        self.error = err
+        self.handle = ICP()
+        self.tracing = trace
+
+    @property
+    def trace(self):
+        return self.handle.H_trace if self.tracing else []
+
+    @trace.setter
+    def trace(self, value):
+        raise AttributeError("ICP Trace is readonly.")
+
+    def __call__(self, data, target):
+        return self.handle.run(target, data, self.iterations, self.error)
+
+    @staticmethod
+    def transform(data, T):
+        """
+        Transform the given datapoints using the transformation matrix T.
+        :param data: The specified datapoints in shape (n, 2)
+        :param T: The 3x3 transformation matrix given by ICP
+        :return: The transformed datapoints to match as closely as possible the source.
+        """
+        R, t = T[0:-1, 0:-1], T[0:-1, -1]
+        return data @ R.T + t
+
+    @staticmethod
+    def getRt(T):
+        return T[0:-1, 0:-1], T[0:-1, -1]
+
+
+if __name__ == '__main__':
+    pass
+
