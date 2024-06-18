@@ -7,6 +7,8 @@ import warnings
 
 warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 

@@ -11,6 +11,8 @@ import warnings
 
 warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+nb_log = logging.getLogger('numba')
+nb_log.setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 def pymap(n, func):
