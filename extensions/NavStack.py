@@ -6,6 +6,11 @@ import numpy as np
 import cv2
 from extensions.logs import logging
 from numba import njit, prange
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 logger = logging.getLogger(__name__)
 
 def pymap(n, func):
