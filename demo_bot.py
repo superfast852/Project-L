@@ -17,6 +17,7 @@ killsig = False
 
 
 def kill():
+    global killsig
     killsig = True
 
 
