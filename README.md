@@ -56,7 +56,7 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - [-] HMI-Like Control Interface using Shuffleboard
 - [ ] Pure Pursuit
 - [ ] Test out the code
-
+- [ ] Frontier Exploration (and adopt Transient Maps in general :/)
 ####    Expansion:
 - [ ] Find out how to enable expansion (the hal is pretty nifty in that sense imo)
 
@@ -86,7 +86,6 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 ---
 ## Notes:
 + We should be figuring out how to integrate dot-by-dot path following. This allows for bezier curves and smooth paths.
-+ allan please add logging throughout the project
 
 
 ### Current development:
@@ -96,7 +95,6 @@ outputs every power connection. Includes Battery voltage monitoring and cutoff. 
 - Communications (pynetworktables or local server, we'll see)
 - GUI
 - Odometry and Positioning (Unify encoder position with lidar position plz thx :)
-- PLEASE ADD LOGGING AHHHAHHAHAHAH
 - CHECK THE TODOs
 - Fix Odometry so that we have a travel and global position.
-- Need to re-do the Map class, we seem to be getting issues with visualization and operation
+- Standardize Maps to work with meters, so that simulation and real-to-digital conversion can be easier and more comprehensible.
