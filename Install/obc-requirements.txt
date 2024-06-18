@@ -8,3 +8,4 @@ filterpy
 lap
 evdev
 matplotlib
+faiss-cpu

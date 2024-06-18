@@ -9,6 +9,7 @@ tqdm  # nifty progress bar stuff
 networkx  # Graph Theory
 evdev  # Controller
 ikpy
+faiss-cpu
 
 # Hardware
 rplidar-roboticia  # Lidar

@@ -73,7 +73,7 @@ def getNearbyPoints(searchable, point, r):
     dots = []
     _2d_dots = []
     for line in planner.endpointsToPath(searchable):  # turn back into a path for it to cooperate with l2c
-        n = line2dots(line)
+        n = line2dots(*line)
         dots += n
         _2d_dots.append(n)
     dots = np.array(dots)

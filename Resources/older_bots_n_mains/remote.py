@@ -1,6 +1,7 @@
 import time
 
-from extensions.tools import XboxController, launchSmartDashboard
+from extensions.tools import launchSmartDashboard
+from extensions.XboxController import *
 from networktables import NetworkTables
 from extensions.NavStack import SLAM, RRT, Map
 from breezyslam.sensors import RPLidarA1

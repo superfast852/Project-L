@@ -1,223 +1,9 @@
-import math
-from os import system, path
-from threading import Thread
-from _thread import interrupt_main
 import numpy as np
 from serial.tools.list_ports import comports
 from numba import njit
-from evdev import InputDevice
-from time import sleep, time
 from extensions.logs import logging
 logger = logging.getLogger(__name__)
 
-class XboxController(object):
-    MAX_TRIG_VAL = 1024
-    MAX_JOY_VAL = 32768
-
-    def __init__(self, deadzone=0.1, retries=5, stall=5, atloss=lambda: []):
-        self.retries = retries
-        self.stall = stall
-        self.atloss = atloss
-
-        self.device_file = ""
-        self.gamepad = None
-        self.conn_t = None
-        self.connect()
-        self.deadzone = deadzone
-
-        self.LJoyY = 0
-        self.LJoyX = 0  # This. Also normalize joystick values
-        self.RJoyY = 0
-        self.RJoyX = 0
-        self.LT = 0
-        self.RT = 0
-        self.LB = 0
-        self.RB = 0
-        self.A = 0
-        self.X = 0
-        self.Y = 0
-        self.B = 0
-        self.LJoyB = 0
-        self.RJoyB = 0
-        self.Back = 0
-        self.Start = 0
-        self.LD = 0
-        self.RD = 0
-        self.UD = 0
-        self.DD = 0
-
-        self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
-        self._monitor_thread.start()
-
-    def connect(self):
-        existing = []
-        names = ["Generic X-Box pad", "Xbox Wireless Controller", "Microsoft X-Box One S pad"]
-        for i in range(50):
-            if path.exists(f"/dev/input/event{i}"):
-                existing.append(f"/dev/input/event{i}")
-            if path.exists(f"/dev/input/js{i}"):
-                existing.append(f"/dev/input/js{i}")
-        for device in existing:
-            try:
-                gamepad = InputDevice(device)
-                if gamepad.name in names:
-                    self.device_file = device
-                    self.conn_t = time()
-                    self.gamepad = gamepad
-                    break
-            except OSError:
-                continue
-        else:
-            logger.error("[tools/XboxController]: No controller found.")
-            raise OSError("No controller found")
-
-    def read(self):  # return the buttons/triggers that you care about in this methode
-        reads = [self.LJoyX, self.LJoyY, self.RJoyX, self.RJoyY,
-                 self.RT, self.A, self.Back, self.Start]
-
-        return [self._clean(i) for i in reads]
-
-    def _clean(self, x):  # Filter out the inputs.
-        return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
-
-    def _monitor_controller(self):
-        from evdev import ecodes
-        try:
-            start = self.conn_t
-            for event in self.gamepad.read_loop():
-                if self.conn_t != start:
-                    break
-                if not path.exists(self.device_file):
-                    logger.warning("Controller has disconnected. Trying to reconnect...")
-                    print("Controller has disconnected. Trying to reconnect...")
-                    # Indicates that the controller disconnected.
-                    for i in range(self.retries):
-                        try:
-                            self.connect()
-                            # Need to work on this, the reassignment of self.gamepad may break this loop.
-                            self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
-                            self._monitor_thread.start()
-                            break
-                        except OSError:
-                            sleep(self.stall)
-                    else:  # If the max amount of retries is reached
-                        logger.error("[tools/XboxController]: Could not reconnect to controller.")
-                        raise OSError("[ERROR] Controller: Could not reconnect to controller.")
-                    continue
-
-
-                # Axis
-                if event.type == ecodes.EV_ABS:
-                    if event.code == 1:
-                        self.LJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
-                    elif event.code == 0:
-                        self.LJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL - 1)  # normalize between -1 and 1
-                    elif event.code == 5:
-                        self.RJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
-                    elif event.code == 2:
-                        self.RJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL) - 1  # normalize between -1 and 1
-                    elif event.code == 10:
-                        self.LT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
-                    elif event.code == 9:
-                        self.RT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
-                        # DPad
-
-                    elif event.code == 17:
-                        self.UD = max(0, -event.value)
-                        self.DD = max(0, event.value)
-
-                    elif event.code == 16:
-                        self.LD = max(0, -event.value)
-                        self.RD = max(0, event.value)
-
-                elif event.type == ecodes.EV_KEY:
-                    # Bumpers
-                    if event.code == 310:
-                        self.LB = event.value
-                    elif event.code == 311:
-                        self.RB = event.value
-
-                    # Face Buttons
-                    elif event.code == 304:
-                        self.A = event.value
-                    elif event.code == 307:
-                        self.X = event.value  # previously switched with X
-                    elif event.code == 308:
-                        self.Y = event.value  # previously switched with Y
-                    elif event.code == 305:
-                        self.B = event.value
-
-                    # Joystick Buttons
-                    elif event.code == 317:
-                        self.LJoyB = event.value
-                    elif event.code == 318:
-                        self.RJoyB = event.value
-
-                    # Menu Buttons
-                    elif event.code == 314:
-                        self.Back = event.value
-                    elif event.code == 315:
-                        self.Start = event.value
-
-        except Exception as e:
-            logger.error(f"[tools/XboxController]: {e}")
-            logger.warning("Controller has disconnected. Trying to reconnect...")
-            print("Controller has disconnected. Trying to reconnect...")
-            self.reset()
-            self.atloss()
-            # Indicates that the controller disconnected.
-            for i in range(self.retries):
-                try:
-                    self.connect()
-                    # Need to work on this, the reassignment of self.gamepad may break this loop.
-                    self._monitor_thread = Thread(target=self._monitor_controller, daemon=True)
-                    self._monitor_thread.start()
-                    break
-                except OSError:
-                    sleep(self.stall)
-            else:  # If the max amount of retries is reached
-                logger.error("[tools/XboxController]: Could not reconnect to controller.")
-                raise OSError("[ERROR] Controller: Could not reconnect to controller.")
-
-    @staticmethod
-    def edge(pulse, last, rising=True):
-        status = (pulse if rising else not pulse) and pulse != last
-        return status, pulse
-
-    def setTrigger(self, button_name, f, rising=True, polling=1/120, **kwargs):
-        last = False
-        def trigger(**kwargs):
-            nonlocal last
-            while True:
-                button = getattr(self, button_name)
-                pulse, last = self.edge(button, last, rising)
-                if pulse:
-                    f(**kwargs)
-                sleep(polling)
-        Thread(target=trigger, kwargs=kwargs, daemon=True).start()
-        logger.debug(f"Trigger set for {button_name} button.")
-
-    def reset(self):
-        self.LJoyY = 0
-        self.LJoyX = 0  # This. Also normalize joystick values
-        self.RJoyY = 0
-        self.RJoyX = 0
-        self.LT = 0
-        self.RT = 0
-        self.LB = 0
-        self.RB = 0
-        self.A = 0
-        self.X = 0
-        self.Y = 0
-        self.B = 0
-        self.LJoyB = 0
-        self.RJoyB = 0
-        self.Back = 0
-        self.Start = 0
-        self.LD = 0
-        self.RD = 0
-        self.UD = 0
-        self.DD = 0
 
 
 # Think I should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
@@ -226,15 +12,6 @@ def exceptionless_exec(f):
         f()
     except Exception as e:
         logger.warning(f"[exceptionless_exec] {e.args} \n\tContext: {e.__context__}\n\tCause: {e.__cause__}\n\tTraceback: {e.__traceback__}")
-
-
-def check_killswitch(name: str = "killswitch.ks") -> bool:
-    with open("/proc/mounts", "r") as f:
-        mounts = filter(lambda x: x[0].startswith("/dev/"), [line.split()[:2] for line in f.readlines()])
-    for mount_point in mounts:
-        if path.exists(path.join(mount_point[1], name)):
-            return True
-    return False
 
 
 def find_port_by_vid_pid(vid, pid):
@@ -261,9 +38,9 @@ def smoothSpeed(start, stop, lapse=100):
 
 
 def getAngle(x, y):
-    angle = round(math.atan2(y, x), 6)
+    angle = round(np.arctan2(y, x), 6)
     if angle < 0:
-        angle += 2* math.pi
+        angle += 2* np.pi
     return angle
 
 
@@ -275,78 +52,16 @@ def limit(x, low, high):
     return min(high, max(x, low))
 
 
-def getCoordinates(angle):
-    # Convert the angle from degrees to radians
-    angle = math.radians(angle)
-    # Calculate the x and y coordinates
-    x = round(math.cos(angle + math.pi/2), 3)
-    y = round(math.sin(angle + math.pi/2), 3)
-    # Return the coordinates as a tuple
-    return x, y
-
-
-def launchSmartDashboard(path="./Resources/shuffleboard.jar"):
-    system(f"java -jar {path} >/dev/null 2>&1 &")
-
 # ---- Bezier Curves :) ----
-
-
 def quad_bezier(start, stop, ctrl):
     start, stop, ctrl = np.array([start, stop, ctrl])
     P = lambda t: (1-t)**2 * start + 2 * t * (1-t) * ctrl + t**2 * stop
     return np.array([P(t) for t in np.linspace(0, 1, 50)])
 
 
-# find the a & b points
-def get_bezier_coef(points):
-    # since the formulas work given that we have n+1 points
-    # then n must be this:
-    n = len(points) - 1
-
-    # build coefficents matrix
-    C = 4 * np.identity(n)
-    np.fill_diagonal(C[1:], 1)
-    np.fill_diagonal(C[:, 1:], 1)
-    C[0, 0] = 2
-    C[n - 1, n - 1] = 7
-    C[n - 1, n - 2] = 2
-
-    # build points vector
-    P = [2 * (2 * points[i] + points[i + 1]) for i in range(n)]
-    P[0] = points[0] + 2 * points[1]
-    P[n - 1] = 8 * points[n - 1] + points[n]
-
-    # solve system, find a & b
-    A = np.linalg.solve(C, P)
-    B = [0] * n
-    for i in range(n - 1):
-        B[i] = 2 * points[i + 1] - A[i + 1]
-    B[n - 1] = (A[n - 1] + points[n]) / 2
-
-    return A, B
-
-
-# returns the general Bezier cubic formula given 4 control points
-def get_cubic(a, b, c, d):
-    return lambda t: np.power(1 - t, 3) * a + 3 * np.power(1 - t, 2) * t * b + 3 * (1 - t) * np.power(t, 2) * c + np.power(t, 3) * d
-
-
-# return one cubic curve for each consecutive points
-def get_bezier_cubic(points):
-    A, B = get_bezier_coef(points)
-    return [
-        get_cubic(points[i], A[i], B[i], points[i + 1])
-        for i in range(len(points) - 1)
-    ]
-
-
-# evaluate each cubic curve on the range [0, 1] sliced in n points
-def evaluate_bezier(points, n):
-    return np.array([fun(t) for fun in get_bezier_cubic(points) for t in np.linspace(0, 1, n)])
-
-
-def line2dots(line: list):
-    x1, y1, x2, y2 = *line[0], *line[1]
+@njit
+def line2dots(a, b):
+    x1, y1, x2, y2 = a[0], a[1], b[0], b[1]
     points = []
     issteep = abs(y2-y1) > abs(x2-x1)
     if issteep:
@@ -387,6 +102,8 @@ def avg(l):
 
 @njit
 def ecd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    a = a.astype(np.float64)
+    b = b.astype(np.float64)
     return np.linalg.norm(a-b)
 
 
@@ -408,98 +125,63 @@ coco = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 't
          'hair drier', 'toothbrush']
 
 
-def depth2xyzuv(depth, u=None, v=None):
+def gen_sines(n_pts, dev, x_shift, rot, trans):
+
     """
-    Return a point cloud, an Nx3 array, made by projecting the kinect depth map
-      through intrinsic / extrinsic calibration matrices
-    Parameters:
-      depth - comes directly from the kinect
-      u,v - are image coordinates, same size as depth (default is the original image)
-    Returns:
-      xyz - 3D world coordinates in meters (Nx3)
-      uv - image coordinates for the RGB image (Nx3)
+    Generates a sine wave and creates a noisy and shifted copy for ICP testing.
 
-    You can provide only a portion of the depth image, or a downsampled version of
-      the depth image if you want; just make sure to provide the correct coordinates
-      in the u,v arguments.
-
-    Example:
-      # This downsamples the depth image by 2 and then projects to metric point cloud
-      u,v = mgrid[:480:2,:640:2]
-      xyz,uv = depth2xyzuv(freenect.sync_get_depth()[::2,::2], u, v)
-
-      # This projects only a small region of interest in the upper corner of the depth image
-      u,v = mgrid[10:120,50:80]
-      xyz,uv = depth2xyzuv(freenect.sync_get_depth()[v,u], u, v)
+    :param n_pts: Number of points to use.
+    :param dev: Standard deviation of points (noise). Tends to be from 0 to 1.
+    :param x_shift: Shift the noised sine wave (in radians).
+    :param rot: Rotation of the noised sine wave (in radians).
+    :param trans: Translation of the noised sine wave.
+    :return: The pure sine wave and the noised sine wave.
     """
-    if u is None or v is None:
-        u, v = np.mgrid[:480, :640]
 
-    # Build a 3xN matrix of the d,u,v data
-    C = np.vstack((u.flatten(), v.flatten(), depth.flatten(), 0 * u.flatten() + 1))
+    x = np.linspace(0, 6.28, n_pts)
+    y = np.sin(x)  # Pure target
+    # Add the noise to the data
+    y_shift = np.sin(x + x_shift)
+    if len(y_shift) > 1000:
+        y_shift = y_shift[:1000]
+    y_noised = y_shift + np.random.normal(0, dev, n_pts)
 
-    # Project the duv matrix into xyz using xyz_matrix()
-    X, Y, Z, W = np.dot(xyz_matrix(), C)
-    X, Y, Z = X / W, Y / W, Z / W
-    xyz = np.vstack((X, Y, Z)).transpose()
-    xyz = xyz[Z < 0, :]
+    def morph_graph(points, translation, theta):
+        # So first we translate the function appropriately. We expect points to be shape (N, 2)
+        # where N is the number of points in the graph
 
-    # Project the duv matrix into U,V rgb coordinates using rgb_matrix() and xyz_matrix()
-    U, V, _, W = np.dot(np.dot(uv_matrix(), xyz_matrix()), C)
-    U, V = U / W, V / W
-    uv = np.vstack((U, V)).transpose()
-    uv = uv[Z < 0, :]
+        # Simple to apply the translation.
+        points = points + translation
+        rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],
+                                    [np.sin(theta), np.cos(theta)]])
 
-    # Return both the XYZ coordinates and the UV coordinates
-    return xyz, uv
+        return np.dot(points, rotation_matrix)
 
-
-def uv_matrix():
-    """
-    Returns a matrix you can use to project XYZ coordinates (in meters) into
-        U,V coordinates in the kinect RGB image
-    """
-    rot = np.array([[9.99846e-01, -1.26353e-03, 1.74872e-02],
-                    [-1.4779096e-03, -9.999238e-01, 1.225138e-02],
-                    [1.747042e-02, -1.227534e-02, -9.99772e-01]])
-    trans = np.array([[1.9985e-02, -7.44237e-04, -1.0916736e-02]])
-    m = np.hstack((rot, -trans.transpose()))
-    m = np.vstack((m, np.array([[0, 0, 0, 1]])))
-    KK = np.array([[529.2, 0, 329, 0],
-                   [0, 525.6, 267.5, 0],
-                   [0, 0, 0, 1],
-                   [0, 0, 1, 0]])
-    m = np.dot(KK, (m))
-    return m
+    return np.array([x, y]).T, morph_graph(np.array([x, y_noised]).T, trans, rot)
 
 
-def xyz_matrix():
-    fx = 594.21
-    fy = 591.04
-    a = -0.0030711
-    b = 3.3309495
-    cx = 339.5
-    cy = 242.7
-    mat = np.array([[1 / fx, 0, 0, -cx / fx],
-                    [0, -1 / fy, 0, cy / fy],
-                    [0, 0, 0, -1],
-                    [0, 0, a, b]])
-    return mat
+def gen_atsushi(nPoint = 1000, fieldLength=100.0, motion=(0.5, 2.0, np.deg2rad(-10.0))):
+    px = (np.random.rand(nPoint) - 0.5) * fieldLength
+    py = (np.random.rand(nPoint) - 0.5) * fieldLength
+    previous_points = np.vstack((px, py))
+
+    # current points
+    cx = [np.cos(motion[2]) * x - np.sin(motion[2]) * y + motion[0]
+          for (x, y) in zip(px, py)]
+    cy = [np.sin(motion[2]) * x + np.cos(motion[2]) * y + motion[1]
+          for (x, y) in zip(px, py)]
+    current_points = np.vstack((cx, cy))
+    return previous_points.T, current_points.T
 
 
-if __name__ == "__main__":
-    from time import sleep
-    controller = XboxController()
-
-    def toCall(btn, message):
-        print(f"Button {btn} was pressed. {message}")
-
-    controller.setTrigger("A", toCall, message="This is a Rising call.", btn="A")
-    controller.setTrigger("A", toCall, message="This is a Falling call.", btn="A", rising=False)
-    while True:
-        print(controller.read())
-        sleep(0.5)
+@njit
+def pol2cart(scans: np.ndarray):
+    # If i'm not mistaken, they're shaped [[r, theta], ...]
+    r, theta = scans.T
+    return r * np.cos(theta), r * np.sin(theta)
 
 
-
-
+points = np.array([[5, i] for i in np.linspace(0, 6.28, 2)])
+pol2cart(points)
+ecd(np.array([1, 1]), np.array([2, 2]))
+line2dots([0, 0], [5, 5])

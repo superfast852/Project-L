@@ -1,4 +1,4 @@
-from extensions.tools import XboxController
+from extensions.XboxController import XboxController
 from extensions.logs import logging
 from Robots.RM_HAL import Drive, RP_A1, MecanumKinematics
 from extensions.NavStack import SLAM, Map

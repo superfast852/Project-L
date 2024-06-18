@@ -1,13 +1,10 @@
 import sys
 import datetime
-now = datetime.datetime.now
-sys.stdout = open("out.log", "a")
-sys.stderr = sys.stdout
-print(f"Started at {now()}")
-
-from extensions.tools import XboxController
+from extensions.XboxController import XboxController
 from Robots.RM_HAL import Drive
 from time import sleep
+from extensions.logs import logging
+logger = logging.getLogger(__name__)
 
 drive = Drive()
 while True:
@@ -21,8 +18,6 @@ killsig = False
 
 
 def kill():
-    drive.brake()
-    print("Exited gracefully.")
     killsig = True
 
 
@@ -35,11 +30,11 @@ while True:
         drive.drive(vals[0], vals[1], vals[4], vals[2])
         if killsig:
             drive.brake()
-            print("Exited gracefully.")
+            logger.info("Exited gracefully.")
             break
         sleep(1/60)
     except Exception as e:
-        print(f"[ERROR] demo_bot: {e}\n{e.stacktrace}")
-        kill()
-print(f"Ended at {now()}\n\n")
+        logger.error(f"[ERROR] demo_bot: {e}\n{e.stacktrace}")
+        drive.brake()
+logger.info(f"Ended at {datetime.datetime.now().time()}\n\n")
 sys.stdout.close()

@@ -152,7 +152,7 @@ while running:
                     if line:
                         pygame.draw.line(screen, RED, mouse_position, point, 1)
 
-                    for dot in line2dots([mouse_position[::-1], point[::-1]]):
+                    for dot in line2dots(*[mouse_position[::-1], point[::-1]]):
                         empty[dot] = 0
                     empty[point[1], point[0]] = 1
             print(f"Frames: {1/(time()-ts)}")

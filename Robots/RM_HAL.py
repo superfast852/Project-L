@@ -3,7 +3,7 @@
 
 from threading import Thread
 from _thread import interrupt_main
-from extensions.tools import getAngle, smoothSpeed, math, find_port_by_vid_pid, np, limit
+from extensions.tools import getAngle, smoothSpeed, find_port_by_vid_pid, np, limit, ecd
 from extensions.NavStack import SLAM
 from extensions.logs import logging
 from breezyslam.sensors import RPLidarA1
@@ -19,6 +19,7 @@ import ikpy.chain
 global_start = time.time()
 logger = logging.getLogger(__name__)
 
+
 # V1.7.3
 class Rosmaster(object):
     __uart_state = 0
@@ -32,7 +33,7 @@ class Rosmaster(object):
     def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB0", delay=.002, debug=False):
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.ser = serial.Serial(port, 115200)
-        if not self.ser.isOpen():
+        if not self.ser.is_open:
             self.ser = serial.Serial(com, 115200)
 
         self.__delay_time = delay
@@ -128,7 +129,7 @@ class Rosmaster(object):
         if self.__debug:
             logger.debug("[Driver] cmd_delay=" + str(self.__delay_time) + "s")
 
-        if self.ser.isOpen():
+        if self.ser.is_open:
             logger.info("[Driver] Rosmaster Serial Opened.")
             self.set_car_type(car_type)
         else:
@@ -143,6 +144,8 @@ class Rosmaster(object):
         del self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.ser.is_open:
+            self.set_motor()  # brake before exit.
         self.__del__()
 
     # According to the type of data frame to make the corresponding parsing
@@ -527,8 +530,8 @@ class Drive:  # TODO: Implement self.max properly
             self.brake()
             return 0, 0, 0, 0
 
-        sin = math.sin(theta+math.pi/4)
-        cos = math.cos(theta+math.pi/4)
+        sin = np.sin(theta+np.pi/4)
+        cos = np.cos(theta+np.pi/4)
         lim = max(abs(sin), abs(cos))
 
         lf = speed * cos / lim + turn
@@ -915,7 +918,7 @@ class MecanumKinematics:  # units in centimeters.
             self.pose[0] = round(self.x(*self.revs), 5)
             self.pose[1] = round(self.y(*self.revs), 5)
             self.pose[2] = round(self.w(*self.revs), 5)
-            self.vec = (math.hypot(*self.pose[:2]), math.atan2(*self.pose[1::-1]))
+            self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
 
     def getTicks(self, x, y, w):  # This already has the right hand rule coordinate system

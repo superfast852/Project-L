@@ -5,7 +5,6 @@ from pickle import dump, load
 import numpy as np
 import cv2
 from extensions.logs import logging
-from icp import ICP
 from numba import njit, prange
 logger = logging.getLogger(__name__)
 
@@ -81,6 +80,7 @@ class Map:
         self.map_center = [i//2 for i in self.map.shape]
         if self.map_meters is None:
             self.map_meters = map_meters
+        self.collision_free(self.getValidPoint(), self.getValidPoint())
 
     def update(self, map):
         self.__init__(map)
@@ -187,24 +187,21 @@ class Map:
         except IndexError:  # If the probe was not successful, it's invalid.
             logging.error("[NavStack/Map] Empty or Invalid path provided.")
 
+    @njit
     def collision_free(self, a, b) -> bool:
-        x1, y1, x2, y2 = *a, *b
+        x1, y1, x2, y2 = int(a[0]), int(a[1]), int(b[0]), int(b[1])
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        points = []
         issteep = abs(y2 - y1) > abs(x2 - x1)
         if issteep:
             x1, y1 = y1, x1
             x2, y2 = y2, x2
-        rev = False
         if x1 > x2:
             x1, x2 = x2, x1
             y1, y2 = y2, y1
-            rev = True
         deltax = x2 - x1
         deltay = abs(y2 - y1)
         error = int(deltax / 2)
         y = y1
-        ystep = None
         if y1 < y2:
             ystep = 1
         else:
@@ -680,40 +677,6 @@ class RRT:
         distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
         nearest_index = np.argmin(distances)
         return nodes[nearest_index]
-
-
-class IterativeClosestPoint:
-    def __init__(self, iter=100, err=1e-6, trace=False):
-        self.iterations = iter
-        self.error = err
-        self.handle = ICP()
-        self.tracing = trace
-
-    @property
-    def trace(self):
-        return self.handle.H_trace if self.tracing else []
-
-    @trace.setter
-    def trace(self, value):
-        raise AttributeError("ICP Trace is readonly.")
-
-    def __call__(self, data, target):
-        return self.handle.run(target, data, self.iterations, self.error)
-
-    @staticmethod
-    def transform(data, T):
-        """
-        Transform the given datapoints using the transformation matrix T.
-        :param data: The specified datapoints in shape (n, 2)
-        :param T: The 3x3 transformation matrix given by ICP
-        :return: The transformed datapoints to match as closely as possible the source.
-        """
-        R, t = T[0:-1, 0:-1], T[0:-1, -1]
-        return data @ R.T + t
-
-    @staticmethod
-    def getRt(T):
-        return T[0:-1, 0:-1], T[0:-1, -1]
 
 
 if __name__ == '__main__':
