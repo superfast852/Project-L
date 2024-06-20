@@ -24,7 +24,7 @@ def drawSmoothPath(img, path):
         map.drawPoint(img, point, 4, (255, 0, 0))
     #print(curve)
     map.drawLineOfDots(img, curve)
-    map.animate(img, drawLines="points")
+    map.animate(img)
 
 
 while True:

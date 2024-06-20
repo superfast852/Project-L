@@ -73,11 +73,11 @@ def getNearbyPoints(searchable, point, r):
     dots = []
     _2d_dots = []
     for line in planner.endpointsToPath(searchable):  # turn back into a path for it to cooperate with l2c
-        n = line2dots(*line)
+        n = line2dots(*tuple(line))
         dots += n
         _2d_dots.append(n)
     dots = np.array(dots)
-    return np.array([i for i in customWithin(dots, point, r) if planner.planner.collisionfree(np.rot90(planner.map.map), point, i)]), _2d_dots
+    return np.array([i for i in customWithin(dots, point, r) if map.collision_free(point, i)]), _2d_dots
 
 
 def search2D(point, arr):

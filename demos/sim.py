@@ -192,7 +192,7 @@ drive = Drive()
 clock = pygame.time.Clock()
 FPS = 60  # Target frames per second
 path = [[[400, 300], [0, 0]], [[0, 0], [0, 600]], [[0, 600], [800, 600]]]
-dotted = [line2dots(*line) for line in path]
+dotted = [line2dots(*tuple(line)) for line in path]
 look_ahead_distance = 40
 running = True
 while running:

@@ -7,7 +7,7 @@ from extensions.tools import getAngle, smoothSpeed, find_port_by_vid_pid, np, li
 from extensions.NavStack import SLAM
 from extensions.logs import logging
 from breezyslam.sensors import RPLidarA1
-from rplidar import RPLidar, RPLidarException
+from rplidar import RPLidar as rpl, RPLidarException
 from itertools import groupby
 from operator import itemgetter
 import struct
@@ -761,7 +761,7 @@ class RP_A1(RPLidarA1):
     def __init__(self, com="/dev/ttyUSB2", baudrate=115200, timeout=3, rotation=0, scan_type="normal", threaded=True):
         super().__init__()
         port = find_port_by_vid_pid(self.VID, self.PID)
-        self.lidar = RPLidar(port, baudrate, timeout)
+        self.lidar = rpl(port, baudrate, timeout)
         logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
         self.lidar.clean_input()
         self.scanner = self.lidar.iter_scans(scan_type, False, 10)
@@ -787,7 +787,7 @@ class RP_A1(RPLidarA1):
             while self.t:
                 self.latest = self.read()
         except RPLidarException as e:
-            logger.error(f"{RPLidar}: {e} | {e.args}")
+            logger.error(f"[RPLidar]: {e} | {e.args}")
             interrupt_main()
 
     def threaded_mapping(self, mapping: SLAM):
@@ -814,7 +814,12 @@ class RP_A1(RPLidarA1):
             self.t = False
             self.scans.join()
 
-    def autoStopCollision(self, collision_threshold):
+    def readCartesian(self):
+        distance, angle = np.array(self.getScan())
+        angle = np.deg2rad(angle)
+        return distance*np.cos(angle), distance*np.sin(angle)
+
+    def autoStopCollision(self, collision_threshold=300):
         # This returns only the clear angles.
         distance, angle = self.getScan()
         clear = []
@@ -903,6 +908,7 @@ class MecanumKinematics:  # units in centimeters.
         self.vec = (0, 0)
         self.pose = [0, 0, 0]
         self.prev_ticks = [0, 0, 0, 0]
+        # TODO: this won't work. It would only work if we were working with speed.
         self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
         self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))

@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 
+
 # Think I should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
 def exceptionless_exec(f):
     try:
@@ -60,7 +61,7 @@ def quad_bezier(start, stop, ctrl):
 
 
 @njit
-def line2dots(a, b):
+def line2dots(a: tuple, b: tuple):
     x1, y1, x2, y2 = a[0], a[1], b[0], b[1]
     points = []
     issteep = abs(y2-y1) > abs(x2-x1)
@@ -142,8 +143,8 @@ def gen_sines(n_pts, dev, x_shift, rot, trans):
     y = np.sin(x)  # Pure target
     # Add the noise to the data
     y_shift = np.sin(x + x_shift)
-    if len(y_shift) > 1000:
-        y_shift = y_shift[:1000]
+    if len(y_shift) > n_pts:
+        y_shift = y_shift[:n_pts]
     y_noised = y_shift + np.random.normal(0, dev, n_pts)
 
     def morph_graph(points, translation, theta):
@@ -181,7 +182,16 @@ def pol2cart(scans: np.ndarray):
     return r * np.cos(theta), r * np.sin(theta)
 
 
+def transform_points(T, points):
+    R, t = T[0:-1, 0:-1], T[0:-1, -1]
+    return np.dot(R, points.T).T + t
+
+
+def transform_to_pose(T):
+    R, t = T[0:-1, 0:-1], T[0:-1, -1]
+    return np.array([t[0], t[1], np.arctan2(R[1, 0], R[0, 0])])
+
 points = np.array([[5, i] for i in np.linspace(0, 6.28, 2)])
 pol2cart(points)
 ecd(np.array([1, 1]), np.array([2, 2]))
-line2dots([0, 0], [5, 5])
+line2dots((0, 0), (5, 5))

@@ -191,7 +191,7 @@ class XboxController(object):
                     f(**kwargs)
                 sleep(polling)
         Thread(target=trigger, kwargs=kwargs, daemon=True).start()
-        logger.debug(f"Trigger set for {button_name} button.")
+        logger.info(f"[XboxController] Trigger set for {button_name} button.")
 
     def reset(self):
         self.LJoyY = 0

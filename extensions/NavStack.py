@@ -1,3 +1,5 @@
+# TODO: Deprecate the original map and replace entirely for TransientMap. Port RRT and the rest of the stuff over.
+
 from __future__ import annotations
 from dataclasses import dataclass
 from breezyslam.algorithms import RMHC_SLAM
@@ -13,220 +15,8 @@ def pymap(n, func):
 
 
 class Map:
-    paths = []
-
     def __init__(self, map="random", map_meters=35):
         # The IR Map is just the RRT Map format.
-        self.map_meters = None
-        if isinstance(map, str):
-            if map.lower() == "random":
-                # Get a randomly generated map for testing.
-                try:
-                    self.map = np.load("./Resources/map.npy")  # Formatted as an RRT Map.
-                except FileNotFoundError:
-                    self.map = np.load("../Resources/map.npy")
-                self.map_meters = 35
-            elif "pkl" in map:
-                with open(map, "rb") as f:
-                    values = load(f)
-                if len(values) == 2 and (isinstance(values, tuple) or isinstance(values, list)):
-                    meters, bytearr = values
-                    map = np.array(bytearr).reshape(int(len(bytearr) ** 0.5), int(len(bytearr) ** 0.5))
-                    for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
-                        map[index[0], index[1]] = 0
-                    for index in np.argwhere(
-                            map >= 200):  # Then we pull up the readings above quality and convert to 1.
-                        map[index[0], index[1]] = 1
-                    # Finally we invert the map, so 0 is free space and 1 is occupied space.
-                    self.map = np.logical_not(map).astype(int)
-                    self.map_meters = meters
-                else:
-                    self.__init__(values)
-            else:
-                logger.error("[NavStack/Map] Could not load map from file.")
-                raise ValueError("Could not extract map from .pkl file.")
-
-        elif isinstance(map, bytearray):
-            # convert from slam to IR
-            # Slam maps are bytearrays that represent the SLAM Calculated map. Higher the pixel value, clearer it is.
-            map = np.array(map).reshape(int(len(map) ** 0.5), int(len(map) ** 0.5))
-            for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
-                map[index[0], index[1]] = 0
-            for index in np.argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
-                map[index[0], index[1]] = 1
-            # Finally we invert the map, so 0 is free space and 1 is occupied space.
-            self.map = np.logical_not(map).astype(int)
-
-        elif isinstance(map, np.ndarray):
-            # convert from rrt to IR
-            # RRT Maps are numpy arrays that RRT uses to calculate a route to a point. 1 represents an obstacle.
-            if np.max(map) > 1:
-                for index in np.argwhere(map < 200):  # First we pull down the readings below quality.
-                    map[index[0], index[1]] = 0
-                for index in np.argwhere(map >= 200):  # Then we pull up the readings above quality and convert to 1.
-                    map[index[0], index[1]] = 1
-                # Finally we invert the map, so 0 is free space and 1 is occupied space.
-                self.map = np.logical_not(map).astype(int)
-            else:  # If we get an IR Map, we just use it.
-                self.map = map
-
-        elif isinstance(map, int):
-            # generate a blank IR Map
-            self.map = np.zeros((map, map), dtype=int)
-
-        else:
-            logger.error("[NavStack/Map] Map format unidentified.")
-            raise ValueError("Map format unidentified.")
-        self.map_center = [i//2 for i in self.map.shape]
-        if self.map_meters is None:
-            self.map_meters = map_meters
-        self.collision_free(self.getValidPoint(), self.getValidPoint())
-
-    def update(self, map):
-        self.__init__(map)
-
-    def fromSlam(self, map):
-        # convert from bytearray to 2d np array, apply quality threshold, scale down to 0-1, reshape
-        # We can get unseen values and quality values.
-        map = ((np.array(map) - 73) / 255).reshape(self.map.shape).round()  # Assume that the map given is the same size as the previous.
-        self.map = np.logical_not(map).astype(int)
-
-    def toSlam(self):
-        return bytearray([(not i)*255 for i in self.map.flatten()])
-
-    def save(self, name=None):
-        if name is None:
-            from datetime import datetime
-            datetime = datetime.today()
-            name = f"{datetime.day}-{datetime.month}-{datetime.year} {datetime.hour}:{datetime.minute}.pkl"
-            del datetime
-        with open(name, "wb") as f:
-            dump(self.map, f)
-        logging.info(f"[NavStack/Map] Saved Map as {name}!")
-
-    def isValidPoint(self, point):
-        return not self.map[point[1], point[0]]
-
-    def getValidPoint(self) -> tuple:
-        free = np.argwhere(self.map == 0)
-        return tuple(free[np.random.randint(0, free.shape[0])][::-1])  # flip to get as xy
-
-    def __len__(self):
-        return len(self.map)
-
-    def __getitem__(self, item):
-        if len(item) != 2:
-            logger.error("[NavStack/Map] Index of the map must be a point (X, Y).")
-            raise IndexError("Index of the map must be a point (X, Y).")
-        return self.map[item[1], item[0]]
-
-    def tocv2(self, invert=True, gray=False):
-        map = self.map if not invert else np.logical_not(self.map)  # we're not applying transformations to the image.
-        return map if gray else cv2.cvtColor(map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
-
-    def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
-        return cv2.circle(img, point, r, c, t)
-
-    def drawPx(self, img, point, c=(0, 0, 255), r=1):
-        for a in range(-r, r):
-            for b in range(-r, r):
-                img[point[1]+a, point[0]+b] = c
-        return img
-
-    def drawLine(self, img, line, c=(0, 255, 0), **kwargs):
-        return cv2.line(img, *line, c, **kwargs)
-
-    def drawLineOfDots(self, img, line, c=(0, 255, 0)):
-        [self.drawLine(img, (line[i], line[i+1]), c=c, thickness=2) for i in range(len(line)-1)]
-
-    def getValidRoute(self, n):
-        return [self.getValidPoint() for _ in range(n)]
-
-    def _posearrowext(self, pose, r):
-        x = r * np.cos(pose[2])
-        y = r * np.sin(pose[2])
-        return (round(pose[0] - x), round(pose[1] - y)), (round(pose[0] + x), round(pose[1] + y))
-
-    def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show="Map"):
-        # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
-        if img is None:
-            img = self.tocv2()
-        if drawLines:
-            for path in self.paths:
-                try:
-                    path = path.tolist()
-                except AttributeError:
-                    pass
-                if path:
-                    cv2.circle(img, path[0][0], 5, (127, 127, 127), -1)
-                    cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
-                    for line in path:
-                        cv2.line(img, *line, [211, 85, 186])
-        if pose is not None:
-            if pose == "center":
-                cv2.arrowedLine(img, self.map_center, tuple(pymap(self.map_center, lambda x: x-5)), (0, 0, 255), 3)
-            else:
-                pt1, pt2 = self._posearrowext(pose, arrowLength/2)
-                cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), thickness)
-        if show:
-            cv2.imshow(show, img)
-            cv2.waitKey(1)
-        else:
-            return img
-
-
-    def addPath(self, route: np.ndarray):
-        try:
-            if route is None:
-                return
-            int(route[0][0][0])  # check if we can index that deep and the value is a number
-            # If that happens, we are sure it's a path
-            self.paths.append(route)
-        except TypeError:  # If we could not convert to an integer,
-            [self.paths.append(i) for i in route]  # It means that route[0][0][0] was an array.
-        except IndexError:  # If the probe was not successful, it's invalid.
-            logging.error("[NavStack/Map] Empty or Invalid path provided.")
-
-    @njit
-    def collision_free(self, a, b) -> bool:
-        x1, y1, x2, y2 = int(a[0]), int(a[1]), int(b[0]), int(b[1])
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        issteep = abs(y2 - y1) > abs(x2 - x1)
-        if issteep:
-            x1, y1 = y1, x1
-            x2, y2 = y2, x2
-        if x1 > x2:
-            x1, x2 = x2, x1
-            y1, y2 = y2, y1
-        deltax = x2 - x1
-        deltay = abs(y2 - y1)
-        error = int(deltax / 2)
-        y = y1
-        if y1 < y2:
-            ystep = 1
-        else:
-            ystep = -1
-        for x in range(x1, x2 + 1):
-            if issteep:
-                point = (y, x)
-            else:
-                point = (x, y)
-            try:
-                if self.map[point[1], point[0]] == 1:  # there is an obstacle
-                    return False
-            except IndexError:  # Hotfix: Out of Bounds check.
-                return False
-            error -= deltay
-            if error < 0:
-                y += ystep
-                error += deltax
-        return True
-
-
-class TransientMap(Map):
-    def __init__(self, map="random", map_meters=35):
-        # The IR Map is just the RRT Map format.
-        super().__init__(1, map_meters)
         self.map_meters = None
 
         if isinstance(map, str):
@@ -276,6 +66,12 @@ class TransientMap(Map):
 
         if self.map_meters is None:
             self.map_meters = map_meters
+        self.m2px = self.map.shape[0] / self.map_meters
+        self.px2m = 1 / self.m2px
+        self.collision_free((0, 0), (0, 0))
+
+    def update(self, map):
+        self.__init__(map)
 
     def fromSlam(self, map: bytearray):
         self.map = self.nb_transient(np.array(map)).astype(int)
@@ -307,6 +103,16 @@ class TransientMap(Map):
         map[map == 1] = 0
         return bytearray(map.flatten())
 
+    def save(self, name=None):
+        if name is None:
+            from datetime import datetime
+            datetime = datetime.today()
+            name = f"{datetime.day}-{datetime.month}-{datetime.year} {datetime.hour}:{datetime.minute}.pkl"
+            del datetime
+        with open(name, "wb") as f:
+            dump(self.map, f)
+        logging.info(f"[NavStack/Map] Saved Map as {name}!")
+
     def isValidPoint(self, point, unknown=False):
         return self.map[point[1], point[0]] == 0 if not unknown else self.map[point[1], point[0]] != 1
 
@@ -314,16 +120,64 @@ class TransientMap(Map):
         free = np.argwhere(self.map == 0) if not unknown else np.argwhere(self.map != 1)
         return tuple(free[np.random.randint(0, free.shape[0])][::-1])  # flip to get as xy
 
-    def tocv2(self, invert=1):  # oh boy.
+    def __len__(self):
+        return len(self.map)
+
+    def __getitem__(self, item):
+        if len(item) != 2:
+            logger.error("[NavStack/Map] Index of the map must be a point (X, Y).")
+            raise IndexError("Index of the map must be a point (X, Y).")
+        return self.map[item[1], item[0]]
+
+    def __repr__(self):
+        return f"TransientMap({self.map.shape}, {self.map_meters})"
+
+    def tocv2(self, invert=1, img=None):  # oh boy.
+        map = self.map.copy() if img is None else img
         if invert:
-            map = self.map.copy()
             mask = map != -1
-            map[mask] = (1 - map[mask])*255
+            map[mask] = np.logical_not(map[mask])*255
             map[map == -1] = 127
         else:
-            map = self.map.copy()*255
+            map *= 255
             map[map == -255] = 127
         return cv2.cvtColor(map.astype(np.uint8), cv2.COLOR_GRAY2BGR)
+
+    def drawPoint(self, img, point, r=2, c=(0, 0, 255), t=2):
+        return cv2.circle(img, point, r, c, t)
+
+    def drawPx(self, img, point, c=(0, 0, 255), r=1):
+        for a in range(-r, r):
+            for b in range(-r, r):
+                img[point[1]+a, point[0]+b] = c
+        return img
+
+    def drawLine(self, img, line, c=(0, 255, 0), **kwargs):
+        return cv2.line(img, *line, c, **kwargs)
+
+    def drawLineOfDots(self, img, line, c=(0, 255, 0)):
+        [self.drawLine(img, (line[i], line[i+1]), c=c, thickness=2) for i in range(len(line)-1)]
+
+    def getValidRoute(self, n, unknown=False):
+        return [self.getValidPoint(unknown) for _ in range(n)]
+
+    def _posearrowext(self, pose, r):
+        x = r * np.cos(pose[2])
+        y = r * np.sin(pose[2])
+        return (round(pose[0] - x), round(pose[1] - y)), (round(pose[0] + x), round(pose[1] + y))
+
+    def addPath(self, route: np.ndarray):
+        try:
+            if route is None:
+                return
+            int(route[0][0][0])  # check if we can index that deep and the value is a number
+            # If that happens, we are sure it's a path
+            self.paths.append(route)
+        except TypeError:  # If we could not convert to an integer,
+            [self.paths.append(i) for i in route]  # It means that route[0][0][0] was an array.
+        except IndexError:  # If the probe was not successful, it's invalid.
+            logging.error("[NavStack/Map] Empty or Invalid path provided.")
+        return
 
     def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show="Map"):
         # Pose is expected to be 2 coordinates, which represent a center and a point along a circle.
@@ -357,6 +211,44 @@ class TransientMap(Map):
         map[map == -1] = val
         return val
 
+    def collision_free(self, a, b) -> bool:
+        return self.cf_wrap(self.map, (a[0], a[1]), (b[0], b[1]))
+
+    @staticmethod
+    @njit
+    def cf_wrap(map, a, b) -> bool:
+        x1, y1, x2, y2 = int(a[0]), int(a[1]), int(b[0]), int(b[1])
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        issteep = abs(y2 - y1) > abs(x2 - x1)
+        if issteep:
+            x1, y1 = y1, x1
+            x2, y2 = y2, x2
+        if x1 > x2:
+            x1, x2 = x2, x1
+            y1, y2 = y2, y1
+        deltax = x2 - x1
+        deltay = abs(y2 - y1)
+        error = int(deltax / 2)
+        y = y1
+        if y1 < y2:
+            ystep = 1
+        else:
+            ystep = -1
+        for x in range(x1, x2 + 1):
+            if issteep:
+                point = (y, x)
+            else:
+                point = (x, y)
+            if (point[0] < 0 or point[1] < 0) or (point[0] >= map.shape[0] or point[1] >= map.shape[1]):
+                return False
+            if map[point[1], point[0]] == 1:  # there is an obstacle
+                return False
+            error -= deltay
+            if error < 0:
+                y += ystep
+                error += deltax
+        return True
+
 
 
 class SLAM:
@@ -367,11 +259,11 @@ class SLAM:
             lidar = RPLidarA1()
         self.mapbytes = self.map.toSlam()
         self.ShouldUpdate = update_map
-        self.map_size = len(self.map)  # Ensure it's actually an integer, might've been calculated.
         self.pose = (0, 0, 0)
         # Slam Preparation
-        self.ratio = self.map.map_meters*1000 / self.map_size  # For converting MM to px.
-        self.slam = RMHC_SLAM(lidar, self.map_size, self.map.map_meters, map_quality = 50)
+        self.ratio = self.map.px2m*1000
+
+        self.slam = RMHC_SLAM(lidar, len(self.map), self.map.map_meters, map_quality = 50)
         self.slam.setmap(self.mapbytes)
 
     def update(self, distances, angles, odometry=None):
@@ -408,7 +300,7 @@ class Node:
 
 
 class RRT:
-    def __init__(self, map: Map, step_size=25, iterations=1000, inflate=0, debug=False):
+    def __init__(self, map: Map, step_size=25, iterations=1000, inflate=0.0, debug=False):
         self.map = map
         self.step_size = step_size
         self.iterations = iterations
@@ -593,19 +485,22 @@ class RRT:
         :param stop: The end point of the path
         :return: Inflated binary cost map
         '''
-        if inflation_r < 0:
-            logger.error("[NavStack/RRT] Inflation coefficient must be positive.")
-            raise ValueError("Inflation coefficient must be positive")
 
         cut = round(inflation_r)
+        og_points = np.argwhere(self.map.map == -1)  # Extract the location of the unknowns
+        sample = self.map.map.copy()
+        sample[sample == -1] = 0
+        sample = np.logical_not(sample).astype(np.uint8)
 
-        sample = np.logical_not(self.map.map).astype(np.uint8)
         edt = cv2.distanceTransform(sample, cv2.DIST_L2, 3)
         sample[edt < inflation_r] = 0
         out = np.logical_not(sample)
         if start is not None:  # If start is not None, then end mustn't be either.
             out[start[1] - cut:start[1] + cut, start[0] - cut:start[0] + cut] = 0
             out[stop[1] - cut:stop[1] + cut, stop[0] - cut:stop[0] + cut] = 0
+
+        out = out.astype(int)
+        out[og_points[:, 1], og_points[:, 0]] = -1
         return out
 
     @staticmethod
@@ -680,5 +575,22 @@ class RRT:
 
 
 if __name__ == '__main__':
-    pass
+    map = Map("../Resources/TransientMap_test_scans.pkl")
+    rrt = RRT(map, inflate=8.5)
+    inflated = rrt.gen_binary_cost()
+    img = map.tocv2(invert=True, img=inflated)
+    while True:
+        map.paths = []
+        start = map.getValidPoint()
+        end = map.getValidPoint()
+        path = rrt.plan(start, end)
+        if rrt.isValidPath(path):
+            map.addPath(path)
+            map.animate(img)
+            cv2.waitKey(1000)
+        else:
+            print("No path found.")
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            break
 
