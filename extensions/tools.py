@@ -2,6 +2,13 @@ import numpy as np
 from serial.tools.list_ports import comports
 from numba import njit
 from extensions.logs import logging
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 

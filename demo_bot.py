@@ -1,4 +1,3 @@
-import sys
 import datetime
 from extensions.XboxController import XboxController
 from Robots.RM_HAL import Drive
@@ -18,6 +17,7 @@ killsig = False
 
 
 def kill():
+    global killsig
     killsig = True
 
 
@@ -37,4 +37,3 @@ while True:
         logger.error(f"[ERROR] demo_bot: {e}\n{e.stacktrace}")
         drive.brake()
 logger.info(f"Ended at {datetime.datetime.now().time()}\n\n")
-sys.stdout.close()

@@ -144,8 +144,7 @@ class Rosmaster(object):
         del self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.ser.is_open:
-            self.set_motor()  # brake before exit.
+        self.set_motor()  # brake before exit.
         self.__del__()
 
     # According to the type of data frame to make the corresponding parsing
@@ -402,7 +401,7 @@ class Rosmaster(object):
             if speed_1 == 127:
                 t_speed_a = 127
             else:
-                t_speed_a = self.__limit_motor_value(speed_1)
+                t_speed_a = self.__limit_motor_value(-speed_1)
             if speed_2 == 127:
                 t_speed_b = 127
             else:
@@ -410,7 +409,7 @@ class Rosmaster(object):
             if speed_3 == 127:
                 t_speed_c = 127
             else:
-                t_speed_c = self.__limit_motor_value(speed_3)
+                t_speed_c = self.__limit_motor_value(-speed_3)
             if speed_4 == 127:
                 t_speed_d = 127
             else:
