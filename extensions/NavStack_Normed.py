@@ -140,6 +140,9 @@ class Map:
         else:
             return int(m[0]*self._topx), int(m[1]*self._topx), m[2]
 
+    def animate(self):
+        pass
+
 
 class SLAM:
     # Note that the SLAM estimated position angles are in degrees.

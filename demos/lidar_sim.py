@@ -2,7 +2,7 @@ import pygame
 import math
 import numpy as np
 from time import time
-from extensions.NavStack_Normed import Map
+from extensions.NavStack import Map
 from extensions.tools import line2dots
 from networktables import NetworkTables
 from numba import njit, jit
@@ -10,6 +10,7 @@ from numba import njit, jit
 # Initialize pygame
 pygame.init()
 mapgen = Map("random")
+map = Map(800)
 NetworkTables.initialize("127.0.0.1")
 meters = 35
 
@@ -154,7 +155,9 @@ while running:
 
                     for dot in line2dots(*tuple([mouse_position[::-1], point[::-1]])):
                         empty[dot] = 0
+                        map.map[dot] = 0
                     empty[point[1], point[0]] = 1
+                    map.map[point[1], point[0]] = 1
             print(f"Frames: {1/(time()-ts)}")
     except ValueError:
         pass
@@ -170,6 +173,7 @@ while running:
     botTable.putNumberArray("pose", copy_pose)
 
     # Cap the frame rate
+    map.animate()
     clock.tick(FPS)
     #print(mouse_position)
     #print(pose)

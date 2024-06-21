@@ -7,14 +7,10 @@ from pickle import dump, load
 import numpy as np
 import cv2
 from extensions.logs import logging
+from extensions.tools import line2dots
 from numba import njit, prange
-from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
-import warnings
+from simple_pid import PID
 
-warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
-warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
-nb_log = logging.getLogger('numba')
-nb_log.setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 def pymap(n, func):
@@ -22,6 +18,8 @@ def pymap(n, func):
 
 
 class Map:
+    paths = []
+
     def __init__(self, map="random", map_meters=35):
         # The IR Map is just the RRT Map format.
         self.map_meters = None
@@ -255,7 +253,6 @@ class Map:
                 y += ystep
                 error += deltax
         return True
-
 
 
 class SLAM:
@@ -579,6 +576,35 @@ class RRT:
         distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
         nearest_index = np.argmin(distances)
         return nodes[nearest_index]
+
+
+class PurePursuit:
+    def __init__(self, path, lad, reach=10, Kp=1, Ki=0, Kd=0):
+        self.lad = lad
+        self.points = np.array([line2dots(tuple(i[0]), tuple(i[1])) for i in path])
+        self.target = self.points[0]
+        self.reach = reach  # The distance to the target point to consider it reached.
+        self.pid = PID(Kp, Ki, Kd, setpoint=0, output_limits=(-1, 1))
+
+    # TODO: test this. also make a UI for the robot but that's another topic.
+    def __call__(self, pose):  # This figures out the steer, btw
+        distances = np.linalg.norm(self.points - pose[:2], axis=1)
+        if distances[-1] < self.reach:
+            return 0
+        else:
+            candidates = np.argwhere(distances < self.lad)
+
+            if len(candidates) == 0:
+                pick = np.argmin(distances)
+            else:
+                pick = candidates[-1][0]
+            self.target = self.points[pick]
+
+        angle = np.arctan2(self.target[1] - pose[1], self.target[0] - pose[0]) - pose[2]
+        return self.pid(angle)
+
+
+
 
 
 if __name__ == '__main__':
