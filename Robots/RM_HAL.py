@@ -157,7 +157,7 @@ class Rosmaster(object):
             logger.debug("[Driver] cmd_delay=" + str(self.__delay_time) + "s")
 
         if self.ser.is_open:
-            driver.create_receive_threading()
+            self.create_receive_threading()
             while self.__battery_voltage < 0:
                 ...
             logger.info("[Driver] Rosmaster Serial Opened.")
