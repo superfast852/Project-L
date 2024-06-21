@@ -608,7 +608,10 @@ class PurePursuit:
 
 
 if __name__ == '__main__':
-    map = Map("../Resources/TransientMap_test_scans.pkl")
+    try:
+        map = Map("../Resources/TransientMap_test_scans.pkl")
+    except FileNotFoundError:
+        map = Map("./Resources/TransientMap_test_scans.pkl")
     rrt = RRT(map, inflate=8.5)
     inflated = rrt.gen_binary_cost()
     img = map.tocv2(invert=True, img=inflated)
@@ -622,7 +625,7 @@ if __name__ == '__main__':
             map.animate(img)
             cv2.waitKey(1000)
         else:
-            print("No path found.")
+            logger.error("No path found.")
             cv2.waitKey(0)
             cv2.destroyAllWindows()
             break

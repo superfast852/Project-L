@@ -9,10 +9,31 @@ def load_json():  # expects the params file to be in root project directory
         try:
             with open("./params.json", "r") as f:
                 params = json.load(f)
-        except OSError:
+        except FileNotFoundError:
             with open("../params.json", "r") as f:
                 params = json.load(f)
     return params
+
+
+class StreamToLogger:
+    """
+    Custom stream object that redirects writes to a logger instance.
+    """
+
+    def __init__(self, logger, log_level=logging.ERROR):
+        self.logger = logger
+        self.log_level = log_level
+        self.buffer = ''
+
+    def write(self, buf):
+        self.buffer += buf
+        if '\n' in self.buffer:
+            self.flush()
+
+    def flush(self):
+        if self.buffer:
+            self.logger.log(self.log_level, self.buffer.strip())
+            self.buffer = ''
 
 
 # 10: Debug | 20: INFO | 30: WARNING | 40: ERROR | 50: CRITICAL
@@ -28,6 +49,7 @@ if not logging.getLogger().hasHandlers():
 
     import datetime
     import os
+    import sys
     if not os.path.exists('logs'):
         os.makedirs('logs')
     ct = datetime.datetime.now().strftime('%H:%M:%S')
@@ -52,6 +74,8 @@ if not logging.getLogger().hasHandlers():
     # Add handlers to the root logger
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+
+    sys.stderr = StreamToLogger(logging.getLogger(), logging.ERROR)
 
     logging.info(f"\n{'-' * 20}\nStarted logging at {ct}\n{'-' * 20}\n")
 
