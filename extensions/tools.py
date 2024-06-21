@@ -103,8 +103,6 @@ def avg(l):
 
 @njit
 def ecd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    a = a.astype(np.float64)
-    b = b.astype(np.float64)
     return np.linalg.norm(a-b)
 
 
