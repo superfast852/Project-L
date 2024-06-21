@@ -48,6 +48,7 @@ while True:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
         print([round(i, 3) for i in driver.enc_speed])
+        print(driver.encoders)
         print(driver.pose)
         if killsig:
             drive.brake()
