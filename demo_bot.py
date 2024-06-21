@@ -50,6 +50,7 @@ controller.setTrigger("A", drive.brake)
 controller.setTrigger("LB", lambda: driver.set_beep(100))
 window = AnimatedWindow()
 start = time()
+plt.show()
 while True:
     try:
         dt = time() - start
