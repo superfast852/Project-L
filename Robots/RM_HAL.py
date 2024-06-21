@@ -541,6 +541,7 @@ class Drive:  # TODO: Implement self.max properly
         self.collision_fn = collision_fn
         self.arg = arg
         self.thread_life = 1
+        self.braking = 0
         self.comm_thread = Thread(target=self.comms, daemon=True)
         self.comm_thread.start()
         self.test_speeds = ((1, 1, 1, 1), (-1, -1, -1, -1),  # Forward, Backward
@@ -614,18 +615,22 @@ class Drive:  # TODO: Implement self.max properly
             time.sleep(1/update_freq)
 
     def drive(self, x, y, power, turn):
+        if self.braking:
+            return (0, 0, 0, 0)
         if self.mecanum:
             return self.cartesian(x, y, power, turn)
         else:
-            return self.tank(power, turn)
+            return self.tank(power, x)
 
     def switchDrive(self):
         self.mecanum = not self.mecanum
 
     def brake(self):
+        self.braking = 1
         self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+        self.braking = 0
 
     def smoothBrake(self, break_time=1):
         lfL = smoothSpeed(self.lf, 0)
