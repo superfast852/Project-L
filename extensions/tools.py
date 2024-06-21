@@ -101,7 +101,6 @@ def avg(l):
     return sum(l)/len(l)
 
 
-@njit
 def ecd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.linalg.norm(a-b)
 
