@@ -50,7 +50,7 @@ controller.setTrigger("A", drive.brake)
 controller.setTrigger("LB", lambda: driver.set_beep(100))
 window = AnimatedWindow()
 start = time()
-plt.show()
+
 while True:
     try:
         dt = time() - start
@@ -63,6 +63,7 @@ while True:
         speeds = driver.enc_speed.copy()
         window.scatter([(dt, i) for i in speeds])
         window.refresh()
+        plt.show()
         sleep(1/60)
     except Exception as e:
         drive.brake()
