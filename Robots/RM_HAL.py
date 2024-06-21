@@ -526,7 +526,7 @@ class Rosmaster(object):
             print("set_car_type input invalid")
 
     def stat_update(self, dt):
-        self.revs = [i / self.tpr for i in driver.enc_speed]  # this turns the pose into revolution-based
+        self.revs = [i / self.tpr for i in self.enc_speed]  # this turns the pose into revolution-based
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
         self.pose[0] += round(self.x(*self.revs), 5) * dt
         self.pose[1] += round(self.y(*self.revs), 5) * dt
