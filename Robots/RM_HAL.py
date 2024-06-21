@@ -563,7 +563,7 @@ class Drive:  # TODO: Implement self.max properly
 
     # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0):
-        theta = getAngle(y, x)
+        theta = np.arctan2(y, x)
         if theta in self.collision_fn(self.arg):
             logger.warning("[Drive] Would Collide at angle "+str(theta))
             self.brake()
