@@ -32,7 +32,7 @@ while True:
     try:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
-        print(kine.pose, [i.round(3) for i in driver.enc_speed], driver.encoders)
+        print(kine.pose, [round(i, 3) for i in driver.enc_speed], driver.encoders)
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")
@@ -40,4 +40,6 @@ while True:
         sleep(1/60)
     except Exception as e:
         drive.brake()
+        print(e)
+        break
 logger.info(f"Ended at {datetime.datetime.now().time()}\n\n")
