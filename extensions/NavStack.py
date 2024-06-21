@@ -1,4 +1,5 @@
-# TODO: Deprecate the original map and replace entirely for TransientMap. Port RRT and the rest of the stuff over.
+# TODO: Due to the new map (i think), the path planning tends to return broken paths more often. Might be the sample too.
+# Check main down below for details.
 
 from __future__ import annotations
 from dataclasses import dataclass

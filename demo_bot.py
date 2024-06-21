@@ -1,6 +1,6 @@
 import datetime
 from extensions.XboxController import XboxController
-from Robots.RM_HAL import Drive
+from Robots.RM_HAL import Drive, driver
 from time import sleep
 from extensions.logs import logging
 logger = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ def kill():
 
 controller.setTrigger("Back", kill)
 controller.setTrigger("Start", drive.switchDrive)
+controller.setTrigger("A", drive.brake)
+controller.setTrigger("LB", lambda: driver.set_beep(100))
 
 while True:
     try:
