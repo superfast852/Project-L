@@ -5,7 +5,10 @@ from Robots.RM_HAL import Drive, driver, MecanumKinematics
 from time import sleep
 from extensions.logs import logging
 logger = logging.getLogger(__name__)
-print(f"Battery level: {driver.get_battery_voltage()} V")
+vbat = -1.0
+while vbat < 0:
+    vbat = driver.get_battery_voltage()
+print(f"Battery level: {vbat} V")
 
 drive = Drive()
 while True:

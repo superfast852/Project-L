@@ -147,7 +147,7 @@ class Rosmaster(object):
         self.__arm_offset_id = 0
         self.__arm_ctrl_enable = True
 
-        self.__battery_voltage = 126.0
+        self.__battery_voltage = -10.0
 
         self.__akm_def_angle = 100
         self.__akm_readed_angle = False
@@ -157,12 +157,15 @@ class Rosmaster(object):
             logger.debug("[Driver] cmd_delay=" + str(self.__delay_time) + "s")
 
         if self.ser.is_open:
+            driver.create_receive_threading()
+            while self.__battery_voltage < 0:
+                ...
             logger.info("[Driver] Rosmaster Serial Opened.")
             self.set_car_type(car_type)
         else:
             logger.error("[Driver] Serial Open Failed!")
             raise OSError("Serial Open Failed!")
-        time.sleep(.002)
+
 
     def __del__(self):
         self.ser.close()
@@ -207,7 +210,6 @@ class Rosmaster(object):
 
         # Encoder data on all four wheels
         elif ext_type == self.FUNC_REPORT_ENCODER:
-
 
             self.encoders = [struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0] for i in range(4)]
             timing = time.time()
@@ -528,11 +530,10 @@ class Rosmaster(object):
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
         self.pose[0] += round(self.x(*self.revs), 5) * dt
         self.pose[1] += round(self.y(*self.revs), 5) * dt
-        self.pose[2] += round(self.w(*self.revs), 5) * dt
+        self.pose[2] += round(self.w(*self.revs)*2*np.pi, 5) * dt
         self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
-driver.create_receive_threading()
 
 
 # This is a raw driving output class.
