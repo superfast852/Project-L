@@ -5,6 +5,7 @@ from Robots.RM_HAL import Drive, driver, MecanumKinematics
 from time import sleep
 from extensions.logs import logging
 logger = logging.getLogger(__name__)
+print(f"Battery level: {driver.get_battery_voltage()} V")
 
 drive = Drive()
 kine = MecanumKinematics()
@@ -23,16 +24,28 @@ def kill():
     killsig = True
 
 
+def add_alpha(dir):
+    global a
+    a += 0.005*dir
+    print(a)
+    for filter in driver.filters:
+        filter.alpha = a
+    driver.alpha = a
+
+
+a = driver.alpha
 controller.setTrigger("Back", kill)
 controller.setTrigger("Start", drive.switchDrive)
 controller.setTrigger("A", drive.brake)
 controller.setTrigger("LB", lambda: driver.set_beep(100))
+controller.setTrigger("UD", lambda: add_alpha(1))
+controller.setTrigger("DD", lambda: add_alpha(-1))
 start = time()
 while True:
     try:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
-        print(kine.pose, [round(i, 3) for i in driver.enc_speed], driver.encoders)
+        print([round(i, 3) for i in driver.enc_speed])
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")

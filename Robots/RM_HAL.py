@@ -112,9 +112,9 @@ class Rosmaster(object):
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
         self.prev_enc = [0, 0, 0, 0]
-        alpha = 0.1
+        self.alpha = 0.01
 
-        self.filters = [LowPassFilter(alpha) for i in range(4)]
+        self.filters = [LowPassFilter(self.alpha) for i in range(4)]
 
         self.enc_mod = enc_mod
         self.last_update = time.time()
