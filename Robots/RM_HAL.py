@@ -112,7 +112,15 @@ class Rosmaster(object):
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
         self.prev_enc = [None]*4
+        self.pose = [0, 0, 0]
+        self.vec = (0, 0)
+        self.w2c = 24
+        self.r = 5
+        self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
+        self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
+        self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
         self.alpha = 1
+        self.steps = list(range(0, 17, 4))
 
         self.filters = [LowPassFilter(self.alpha) for i in range(4)]
 
@@ -199,8 +207,8 @@ class Rosmaster(object):
         # Encoder data on all four wheels
         elif ext_type == self.FUNC_REPORT_ENCODER:
 
-            steps = list(range(0, 17, 4))
-            self.encoders = [struct.unpack('i', bytearray(ext_data[steps[i]:steps[i+1]]))[0] for i in range(len(steps)-1)]
+
+            self.encoders = [struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0] for i in range(4)]
             timing = time.time()
             time_diff = timing-self.last_update
             self.last_update = timing
@@ -209,6 +217,7 @@ class Rosmaster(object):
                 if self.prev_enc[i] is not None:
                     self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
                 self.prev_enc[i] = self.encoders[i]
+            self.stat_update(time_diff)
 
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
@@ -513,6 +522,14 @@ class Rosmaster(object):
         else:
             print("set_car_type input invalid")
 
+    def stat_update(self, dt):
+        self.revs = [i / self.tpr for i in driver.enc_speed]  # this turns the pose into revolution-based
+        # This means that 1 turn on a wheel is 10cm of distance. Therefore,
+        self.pose[0] += round(self.x(*self.revs), 5) * dt
+        self.pose[1] += round(self.y(*self.revs), 5) * dt
+        self.pose[2] += round(self.w(*self.revs), 5) * dt
+        self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
+
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
 driver.create_receive_threading()
 
@@ -620,7 +637,7 @@ class Drive:  # TODO: Implement self.max properly
     def brake(self):
         self.braking = 1
         self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
-        time.sleep(0.5)
+        time.sleep(0.2)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
         self.braking = 0
 
@@ -953,6 +970,8 @@ class MecanumKinematics:  # units in centimeters.
             self.pose[2] += round(self.w(*self.revs), 5)*dt
             self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
+
+
 
 
     def getTicks(self, x, y, w):  # This already has the right hand rule coordinate system

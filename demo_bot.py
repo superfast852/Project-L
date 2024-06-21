@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 print(f"Battery level: {driver.get_battery_voltage()} V")
 
 drive = Drive()
-kine = MecanumKinematics()
 while True:
     try:
         controller = XboxController(atloss=drive.brake)
@@ -46,6 +45,7 @@ while True:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
         print([round(i, 3) for i in driver.enc_speed])
+        print(driver.pose)
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")
