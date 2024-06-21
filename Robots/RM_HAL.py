@@ -116,6 +116,7 @@ class Rosmaster(object):
         self.vec = (0, 0)
         self.w2c = 24
         self.r = 5
+        self.tpr = 362
         self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
         self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
