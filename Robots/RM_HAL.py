@@ -20,6 +20,27 @@ global_start = time.time()
 logger = logging.getLogger(__name__)
 
 
+class KalmanFilter:
+    def __init__(self, process_variance, measurement_variance, estimate_variance, initial_estimate):
+        self.process_variance = process_variance
+        self.measurement_variance = measurement_variance
+        self.estimate_variance = estimate_variance
+        self.current_estimate = initial_estimate
+        self.current_error_covariance = 1.0
+
+    def filter(self, measurement):
+        # Prediction step
+        predicted_estimate = self.current_estimate
+        predicted_error_covariance = self.current_error_covariance + self.process_variance
+
+        # Update step
+        kalman_gain = predicted_error_covariance / (predicted_error_covariance + self.measurement_variance)
+        self.current_estimate = predicted_estimate + kalman_gain * (measurement - predicted_estimate)
+        self.current_error_covariance = (1 - kalman_gain) * predicted_error_covariance
+
+        return self.current_estimate
+
+
 # V1.7.3
 class Rosmaster(object):
     __uart_state = 0
@@ -98,6 +119,13 @@ class Rosmaster(object):
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
         self.prev_enc = [0, 0, 0, 0]
+        process_variance = 1e-5  # Adjust as needed
+        measurement_variance = 1e-1  # Adjust as needed
+        estimate_variance = 1.0  # Adjust as needed
+        initial_estimate = 0.0  # Adjust as needed
+
+        self.filters = [KalmanFilter(process_variance, measurement_variance, estimate_variance, initial_estimate) for i in range(4)]
+
         self.enc_mod = enc_mod
         self.last_update = time.time()
 
@@ -188,7 +216,7 @@ class Rosmaster(object):
             self.last_update = timing
             for i in range(4):
                 self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
-                self.enc_speed[i] = (self.encoders[i]-self.prev_enc[i])/time_diff
+                self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
 
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
