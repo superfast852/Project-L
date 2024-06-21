@@ -117,9 +117,9 @@ class Rosmaster(object):
         self.w2c = 24
         self.r = 5
         self.tpr = 362
-        self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
-        self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
-        self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
+        self.y = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.sin(self.pose[2])
+        self.x = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.cos(self.pose[2])
+        self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c)) * 2*np.pi
         self.alpha = 1
         self.steps = list(range(0, 17, 4))
 
@@ -530,7 +530,7 @@ class Rosmaster(object):
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
         self.pose[0] += round(self.x(*self.revs) * dt, 5)
         self.pose[1] += round(self.y(*self.revs) * dt, 5)
-        self.pose[2] += round(self.w(*self.revs)*2*np.pi * dt, 5)
+        self.pose[2] += round(self.w(*self.revs) * dt, 5)
         self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
@@ -563,7 +563,7 @@ class Drive:  # TODO: Implement self.max properly
 
     # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0):
-        theta = np.arctan2(-x, y)
+        theta = np.arctan2(y, -x)
         if theta in self.collision_fn(self.arg):
             logger.warning("[Drive] Would Collide at angle "+str(theta))
             self.brake()
@@ -659,9 +659,9 @@ class Drive:  # TODO: Implement self.max properly
 
     def get_directions(self):
         return [
-            (self.lf - self.rf - self.lb + self.rb)/4,
-            (self.lf + self.rf + self.lb + self.rb)/4,
-            (self.lf - self.rf + self.lb - self.rb)/4
+            (self.lf + self.rf + self.lb + self.rb) / 4,
+            (self.lf - self.rf - self.lb + self.rb) / 4,
+            (self.lf - self.rf + self.lb - self.rb) / 4
         ]
 
 
@@ -952,8 +952,8 @@ class MecanumKinematics:  # units in centimeters.
         self.pose = [0, 0, 0]
         self.prev_ticks = [0, 0, 0, 0]
         # TODO: this won't work. It would only work if we were working with speed.
-        self.x = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.cos(self.pose[2])
-        self.y = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.sin(self.pose[2])
+        self.y = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.sin(self.pose[2])
+        self.x = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.cos(self.pose[2])
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c))
 
         self.timestampSecondsPrev = None
@@ -972,7 +972,6 @@ class MecanumKinematics:  # units in centimeters.
             self.pose[2] += round(self.w(*self.revs), 5)*dt
             self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
-
 
 
 
