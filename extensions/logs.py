@@ -54,7 +54,7 @@ if not logging.getLogger().hasHandlers():
         os.makedirs('logs')
     ct = datetime.datetime.now().strftime('%H:%M:%S')
     log_file = f"logs/{datetime.date.today()}@{ct}.log"
-    log_level = 10 # int(load_json().get("level", logging.INFO))
+    log_level = int(load_json().get("level", logging.INFO))
 
     # Create handlers
     file_handler = logging.FileHandler(log_file)

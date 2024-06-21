@@ -64,6 +64,5 @@ while True:
         window.refresh()
         sleep(1/60)
     except Exception as e:
-        logger.error(f"[ERROR] demo_bot: {e}\n{e.stacktrace}")
         drive.brake()
 logger.info(f"Ended at {datetime.datetime.now().time()}\n\n")
