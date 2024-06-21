@@ -111,7 +111,7 @@ class Rosmaster(object):
 
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
-        self.prev_enc = [0, 0, 0, 0]
+        self.prev_enc = [None]*4
         self.alpha = 0.01
 
         self.filters = [LowPassFilter(self.alpha) for i in range(4)]
@@ -198,7 +198,7 @@ class Rosmaster(object):
 
         # Encoder data on all four wheels
         elif ext_type == self.FUNC_REPORT_ENCODER:
-            self.prev_enc = self.encoders.copy()
+
             steps = list(range(0, 17, 4))
             self.encoders = [struct.unpack('i', bytearray(ext_data[steps[i]:steps[i+1]]))[0] for i in range(len(steps)-1)]
             timing = time.time()
@@ -206,7 +206,10 @@ class Rosmaster(object):
             self.last_update = timing
             for i in range(4):
                 self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
-                self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
+                if self.prev_enc[i] is not None:
+                    self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
+                else:
+                    self.prev_enc[i] = self.encoders[i]
 
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
