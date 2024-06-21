@@ -32,7 +32,7 @@ while True:
     try:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
-        print(kine.pose, driver.enc_speed)
+        print(kine.pose, driver.enc_speed, driver.encoders)
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")
