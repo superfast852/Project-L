@@ -528,9 +528,9 @@ class Rosmaster(object):
     def stat_update(self, dt):
         self.revs = [i / self.tpr for i in self.enc_speed]  # this turns the pose into revolution-based
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
-        self.pose[0] += round(self.x(*self.revs), 5) * dt
-        self.pose[1] += round(self.y(*self.revs), 5) * dt
-        self.pose[2] += round(self.w(*self.revs)*2*np.pi, 5) * dt
+        self.pose[0] += round(self.x(*self.revs) * dt, 5)
+        self.pose[1] += round(self.y(*self.revs) * dt, 5)
+        self.pose[2] += round(self.w(*self.revs)*2*np.pi * dt, 5)
         self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
 
 driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
