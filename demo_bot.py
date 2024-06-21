@@ -26,7 +26,7 @@ def kill():
 
 def add_alpha(dir):
     global a
-    a += 0.005*dir
+    a += 0.1*dir
     print(a)
     for filter in driver.filters:
         filter.alpha = a
