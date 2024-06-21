@@ -208,6 +208,7 @@ class Rosmaster(object):
                 self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
                 if self.prev_enc[i] is not None:
                     self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
+                    self.prev_enc[i] = self.encoders[i]
                 else:
                     self.prev_enc[i] = self.encoders[i]
 
