@@ -1,12 +1,13 @@
 import datetime
 from time import time
 from extensions.XboxController import XboxController
-from Robots.RM_HAL import Drive, driver
+from Robots.RM_HAL import Drive, driver, MecanumKinematics
 from time import sleep
 from extensions.logs import logging
 logger = logging.getLogger(__name__)
 
 drive = Drive()
+kine = MecanumKinematics()
 while True:
     try:
         controller = XboxController(atloss=drive.brake)
@@ -31,12 +32,11 @@ while True:
     try:
         vals = controller.read()
         drive.drive(vals[0], vals[1], vals[4], vals[2])
+        print(kine.pose)
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")
             break
-        speeds = driver.enc_speed.copy()
-        print(speeds)
         sleep(1/60)
     except Exception as e:
         drive.brake()

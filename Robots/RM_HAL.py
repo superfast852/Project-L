@@ -917,14 +917,18 @@ class MecanumKinematics:  # units in centimeters.
         self.thread.start()
 
     def updatePosition(self):
+        last = time.time()
         while True:
-            self.revs = [i/self.tpr for i in driver.encoders]  # this turns the pose into revolution-based
+            dt = time.time() - last
+            last += dt  # Now last is the current time.
+            self.revs = [i/self.tpr for i in driver.enc_speed]  # this turns the pose into revolution-based
             # This means that 1 turn on a wheel is 10cm of distance. Therefore,
-            self.pose[0] = round(self.x(*self.revs), 5)
-            self.pose[1] = round(self.y(*self.revs), 5)
-            self.pose[2] = round(self.w(*self.revs), 5)
+            self.pose[0] += round(self.x(*self.revs), 5)*dt
+            self.pose[1] += round(self.y(*self.revs), 5)*dt
+            self.pose[2] += round(self.w(*self.revs), 5)*dt
             self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
             time.sleep(1 / 30)
+
 
     def getTicks(self, x, y, w):  # This already has the right hand rule coordinate system
         recip = 1 / self.r
