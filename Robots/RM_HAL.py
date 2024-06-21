@@ -20,25 +20,18 @@ global_start = time.time()
 logger = logging.getLogger(__name__)
 
 
-class KalmanFilter:
-    def __init__(self, process_variance, measurement_variance, estimate_variance, initial_estimate):
-        self.process_variance = process_variance
-        self.measurement_variance = measurement_variance
-        self.estimate_variance = estimate_variance
-        self.current_estimate = initial_estimate
-        self.current_error_covariance = 1.0
+class LowPassFilter:
+    def __init__(self, alpha):
+        self.alpha = alpha
+        self.last_value = None
 
-    def filter(self, measurement):
-        # Prediction step
-        predicted_estimate = self.current_estimate
-        predicted_error_covariance = self.current_error_covariance + self.process_variance
-
-        # Update step
-        kalman_gain = predicted_error_covariance / (predicted_error_covariance + self.measurement_variance)
-        self.current_estimate = predicted_estimate + kalman_gain * (measurement - predicted_estimate)
-        self.current_error_covariance = (1 - kalman_gain) * predicted_error_covariance
-
-        return self.current_estimate
+    def filter(self, new_value):
+        if self.last_value is None:
+            self.last_value = new_value
+            return new_value
+        filtered_value = self.alpha * new_value + (1 - self.alpha) * self.last_value
+        self.last_value = filtered_value
+        return filtered_value
 
 
 # V1.7.3
@@ -119,12 +112,9 @@ class Rosmaster(object):
         self.encoders = [0, 0, 0, 0]
         self.enc_speed = [0, 0, 0, 0]
         self.prev_enc = [0, 0, 0, 0]
-        process_variance = 1e-5  # Adjust as needed
-        measurement_variance = 1e-1  # Adjust as needed
-        estimate_variance = 1.0  # Adjust as needed
-        initial_estimate = 0.0  # Adjust as needed
+        alpha = 0.1
 
-        self.filters = [KalmanFilter(process_variance, measurement_variance, estimate_variance, initial_estimate) for i in range(4)]
+        self.filters = [LowPassFilter(alpha) for i in range(4)]
 
         self.enc_mod = enc_mod
         self.last_update = time.time()
