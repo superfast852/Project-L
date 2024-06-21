@@ -19,5 +19,6 @@ python3 setup.py install
 cd ../../
 rm -rf breezyslam
 pip install -r obc-requirements.txt
-pip install --upgrade numpy scipy
 python3 create_startup.py
+pip install --upgrade scipy
+pip install --upgrade -r obc-requirements.txt

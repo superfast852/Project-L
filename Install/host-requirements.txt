@@ -1,29 +1,21 @@
 ﻿# General
 
-numpy
+numpy  # the best creation since sliced bread
 matplotlib
 pynetworktables  # comms
-opencv-python
+opencv-python  # yeah.
 numba  # Code optimization
-tqdm  # nifty progress bar stuff
-networkx  # Graph Theory
 evdev  # Controller
-ikpy
-faiss-cpu
+ikpy  # inverse kinematics
+faiss-cpu  # icp, specifically nearest neighbor search
 
 # Hardware
 rplidar-roboticia  # Lidar
 pyserial  # Serial communication. Used for Rosmaster
 
 # other
-noise
-plotly
-torch
-tensorrt
+noise  # perlin noise for synthetic map generation
+torch  # very good tensors
+tensorrt  # running trt models very fast on jetson and nvidia gpus
 filterpy  # for sort tracking
 lap  # linear assignment for sort
-
-# Centerline Calculation
-# scikit-image
-
-# Check the installer.sh script
