@@ -38,6 +38,30 @@ class LowPassFilter:
         return filtered_value
 
 
+class KalmanFilter:
+    def __init__(self, process_variance=1e-5, measurement_variance=1e-1, estimate_variance=1.0, initial_estimate=0.0):
+        #<-slow response | sensitive to noise->
+        self.process_variance = process_variance  # Increase respective to trust in measurement changes
+        #<-responsive, sensitive to noise | smoother, less sensitive to noise->
+        self.measurement_variance = measurement_variance  # Increase respective to how uncertain you expect the readings to be
+        #<-sticks to initial measurement | adaptive to new measurements ->
+        self.estimate_variance = estimate_variance  # Set high for quick reading adaptment, low if you trust the initial estimate
+        self.current_estimate = initial_estimate
+        self.current_error_covariance = 1.0
+
+    def filter(self, measurement):
+        # Prediction step
+        predicted_estimate = self.current_estimate
+        predicted_error_covariance = self.current_error_covariance + self.process_variance
+
+        # Update step
+        kalman_gain = predicted_error_covariance / (predicted_error_covariance + self.measurement_variance)
+        self.current_estimate = predicted_estimate + kalman_gain * (measurement - predicted_estimate)
+        self.current_error_covariance = (1 - kalman_gain) * predicted_error_covariance
+
+        return self.current_estimate
+
+
 # V1.7.3
 class Rosmaster(object):
     __uart_state = 0
@@ -48,7 +72,7 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", pid_freq=30, max_tick_speed=3000, debug=False, open=True):
+    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", pid_freq=30, max_tick_speed=3000, debug=False, open=True, kalman=True):
         if open:
             port = find_port_by_vid_pid(self.VID, self.PID)
             self.ser = serial.Serial(port, 115200)
@@ -125,12 +149,15 @@ class Rosmaster(object):
         self.alpha = 1
         self.steps = list(range(0, 17, 4))
         self.timestampSecondsPrev = None
-        self.filters = [LowPassFilter(self.alpha) for i in range(4)]
+        if kalman:
+            self.filters = [KalmanFilter() for i in range(4)]
+        else:
+            self.filters = [LowPassFilter(self.alpha) for i in range(4)]
         self.enc_mod = enc_mod
         self.last_update = time.time()
 
         global params
-        self.pid_params = params.get("pid_params", {"lf": '(1, 0, 0)', "rf": '(1, 0, 0)', "lb": '(1, 0, 0)', "rb": '(1, 0, 0)'})
+        self.pid_params = params.get("motors", {"lf": '(1, 0, 0)', "rf": '(1, 0, 0)', "lb": '(1, 0, 0)', "rb": '(1, 0, 0)'})
         self.pid = [PID(*eval(params), setpoint=0, output_limits=(-100, 100)) for params in self.pid_params.values()]
         self.speeds = [0, 0, 0, 0]
         self.pid_delay = 1/pid_freq
@@ -236,12 +263,15 @@ class Rosmaster(object):
         elif ext_type == self.FUNC_REPORT_ENCODER:
 
             self.encoders = [struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0] for i in range(4)]
+            # deltaTime calculation
             timing = time.time()
             time_diff = timing-self.last_update
             self.last_update = timing
+
             for i in range(4):
-                self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])
+                self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])  # get encoder readings
                 if self.prev_enc[i] is not None:
+                    # speed = filter((current-prev)/deltaTime)
                     self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
                 self.prev_enc[i] = self.encoders[i]
             self.pose_update(time_diff)
