@@ -23,6 +23,7 @@ class Map:
 
     def __init__(self, map="random", map_meters=35):
         # The IR Map is just the RRT Map format.
+        self.nb_transient(np.array(bytearray([127]*4))).astype(int)
         self.map_meters = None
 
         if isinstance(map, str):
@@ -83,22 +84,24 @@ class Map:
         self.map = self.nb_transient(np.array(map)).astype(int)
 
     @staticmethod
-    @njit(parallel=True)
+    @njit(parallel=True, fastmath=True)
     def nb_transient(map_array: np.ndarray) -> np.ndarray:
         tol = 1e-2
         len = int(map_array.size ** 0.5)
         map = (map_array.reshape(len, len) - 73) / 255
         for i in prange(map.shape[0]):
-            for j in range(map.shape[1]):
+            for j in prange(map.shape[1]):
                 if abs(map[i, j] - (54 / 255)) < tol:
                     map[i, j] = -1
-
-        mask = map != -1
-
-        for i in prange(map.shape[0]):
-            for j in range(map.shape[1]):
-                if mask[i, j]:
+                else:
                     map[i, j] = np.logical_not(round(map[i, j]))
+
+        #mask = map != -1
+
+        #for i in prange(map.shape[0]):
+        #    for j in range(map.shape[1]):
+        #        if mask[i, j]:
+        #            map[i, j] = np.logical_not(round(map[i, j]))
 
         return map
 
@@ -107,7 +110,7 @@ class Map:
         map[map == -1] = 127
         map[map == 0] = 255
         map[map == 1] = 0
-        return bytearray(map.flatten())
+        return bytearray(map.astype(np.uint8).flatten())
 
     def save(self, name=None):
         if name is None:
@@ -196,7 +199,7 @@ class Map:
                 except AttributeError:  # Means it's already a list.
                     pass
                 if path:
-                    cv2.circle(img, path[0][0], 5, (127, 127, 127), -1)
+                    cv2.circle(img, path[0][0], 5, (0, 0, 255), -1)
                     cv2.circle(img, path[-1][1], 5, (0, 255, 0), -1)
                     for line in path:
                         cv2.line(img, *line, [211, 85, 186])
@@ -303,6 +306,9 @@ class Node:
     def __getitem__(self, item):
         return (self.x, self.y)[item]
 
+    def __call__(self, *args, **kwargs):
+        return (self.x, self.y)
+
 
 class RRT:
     def __init__(self, map: Map, step_size=25, iterations=1000, inflate=0.0, debug=False):
@@ -319,12 +325,14 @@ class RRT:
         self.map_shape = self.map.map.shape
         if self.inflate > 0:
             self.inflated.map = self.gen_binary_cost(self.inflate, start=start, stop=end)
+            self.map, self.inflated = self.inflated, self.map
         if self.debug:
             self.img = self.map.tocv2()
             cv2.circle(self.img, start, 5, (0, 255, 0), -1)
             cv2.circle(self.img, end, 5, (0, 255, 0), -1)
         # If you can go straight to the goal, do it
-        if self.inflated.collision_free(start, end):
+        if self.map.collision_free(start, end):
+            self.map, self.inflated = self.inflated, self.map
             return [[start.tolist(), end.tolist()]]
 
         start_node = Node(*start)
@@ -360,12 +368,11 @@ class RRT:
                             cv2.waitKey(1000)
                         # Path found
                         # Combine and reverse path from goal to start
-                        out = self._rearrange(self.extract_path(new_node_a) + self.extract_path(new_node_b)[::-1],
-                                              start, end)
-                        # Here goes all the line postprocessing fluff
+                        l, r = self.extract_path(new_node_a), self.extract_path(new_node_b)
 
-                        if out[-1][1] != end.tolist():
-                            out[-1] = out[-1][::-1]
+                        out = self.recursive_continuity(l + self.fully_reverse(r))
+                        #out = self.ecd_shortening(out, start, end)
+                        self.map, self.inflated = self.inflated, self.map
                         return out
 
                     nearest_node_b = self._nearest(tree_b, new_node_a)
@@ -395,29 +402,9 @@ class RRT:
             return new_node
         return None
 
-    def _rearrange(self, path, start, end):
-        # Check if the path is inverse.
-
-        # First, if the end point is at the start
-        if np.argwhere(np.all(path[0] == end, axis=-1)).size != 0:
-            path.reverse()
-
-        # This is a continuity checker, i think?
-        # Yes, this loop stops when i is a broken bond.
-        last = path[0][1]
-        for i in range(1, len(path) - 1):
-            segment = path[i]
-            if last != segment[0]:
-                break
-            last = segment[1]
-        else:  # The else runs when the for loop completes.
-            return path
-
-        a, b = path[:i], path[i:]  # Split the path into the convergence of both trees
-        b = np.fliplr(b).tolist()  # flip the second tree
-        out = a + b  # Join them back properly
-        return self.restitch(out)
-        # This is a continuity checker. It tries to patch holes in the path by connecting disjointed segments.
+    def fully_reverse(self, path):
+        path = np.array(path)[:, ::-1]
+        return path.tolist()[::-1]
 
     def extract_path(self, end_node, slope_tolerance=1e-1):
         # This traverses the tree and extracts the xy location of each node.
@@ -457,7 +444,7 @@ class RRT:
         return segments
 
     # Path Postprocessing methods
-    # TODO: Check this, it is probably very broken.
+    # TODO: Check this, it is very broken.
     def ecd_shortening(self, path, start, end):
         # This function clips the ends of the path to the nearest collision-free point.
         if len(path) == 1:
@@ -528,6 +515,16 @@ class RRT:
             prev = segment[1]
         return True
 
+    def recursive_continuity(self, path):
+        for i in range(1, len(path)):
+            last = path[i-1][1]
+            current = path[i][0]
+            if last != current:
+                print("Found discontinuity!")
+                path = path[:i] + [[last, current]] + path[i:]
+                return self.recursive_continuity(path)
+        return path
+
     @staticmethod
     def restitch(path):
         out = path
@@ -557,6 +554,7 @@ class RRT:
         return (path is not None) and len(path) > 0
 
     @staticmethod
+    @njit(fastmath=True)
     def calculate_slope(p1, p2):
         dx = p2[0] - p1[0]
         dy = p2[1] - p1[1]
@@ -573,8 +571,8 @@ class RRT:
 
     @staticmethod
     def _nearest(nodes, target):
-        # check the closest node to the target
-        distances = [np.hypot(node.x - target.x, node.y - target.y) for node in nodes]
+        np_nodes = np.array([node() for node in nodes])
+        distances = np.linalg.norm(np_nodes - [target.x, target.y], axis=1)
         nearest_index = np.argmin(distances)
         return nodes[nearest_index]
 
@@ -605,18 +603,23 @@ class PurePursuit:
         return self.pid(angle)
 
 
-
-
-
 if __name__ == '__main__':
+    from time import perf_counter
+    map = Map(800)
+    nb = bytearray([127]*800*800)
+    s = perf_counter()
+    map.fromSlam(nb)
+    print(f"Before: {1/(perf_counter()-s)}")
+    exit()
     try:
         map = Map("../Resources/TransientMap_test_scans.pkl")
     except FileNotFoundError:
         map = Map("./Resources/TransientMap_test_scans.pkl")
+    map = Map()
     rrt = RRT(map, inflate=8.5)
     inflated = rrt.gen_binary_cost()
     img = map.tocv2(invert=True, img=inflated)
-    while True:
+    while cv2.waitKey(1000) != ord('q'):
         map.paths = []
         start = map.getValidPoint()
         end = map.getValidPoint()
@@ -627,7 +630,4 @@ if __name__ == '__main__':
             cv2.waitKey(1000)
         else:
             logger.error("No path found.")
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-            break
 

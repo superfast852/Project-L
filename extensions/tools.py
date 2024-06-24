@@ -5,8 +5,6 @@ from extensions.logs import logging
 logger = logging.getLogger(__name__)
 
 
-
-
 # Think I should clarify that this is absolutely fucking disgusting and nobody should ever do this at all ever.
 def exceptionless_exec(f):
     try:
@@ -60,7 +58,7 @@ def quad_bezier(start, stop, ctrl):
     return np.array([P(t) for t in np.linspace(0, 1, 50)])
 
 
-@njit
+@njit(fastmath=True)
 def line2dots(a: tuple, b: tuple):
     x1, y1, x2, y2 = a[0], a[1], b[0], b[1]
     points = []
@@ -172,7 +170,7 @@ def gen_atsushi(nPoint = 1000, fieldLength=100.0, motion=(0.5, 2.0, np.deg2rad(-
     return previous_points.T, current_points.T
 
 
-@njit
+@njit(fastmath=True)
 def pol2cart(scans: np.ndarray):
     # If i'm not mistaken, they're shaped [[r, theta], ...]
     r, theta = scans.T
@@ -188,7 +186,7 @@ def transform_to_pose(T):
     R, t = T[0:-1, 0:-1], T[0:-1, -1]
     return np.array([t[0], t[1], np.arctan2(R[1, 0], R[0, 0])])
 
-points = np.array([[5, i] for i in np.linspace(0, 6.28, 2)])
-pol2cart(points)
+
+pol2cart(np.array([[5, i] for i in np.linspace(0, 6.28, 2)]))
 ecd(np.array([1, 1]), np.array([2, 2]))
 line2dots((0, 0), (5, 5))

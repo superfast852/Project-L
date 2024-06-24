@@ -1,10 +1,10 @@
-from rplidar import RPLidar, RPLidarException
 import matplotlib.pyplot as plt
-import numpy as np
-from time import sleep, perf_counter
+from Robots.RM_HAL import RP_A1, RPLidarException, np
+from extensions.ICP import iterative_closest_point, transform_to_pose
+from extensions.NavStack import Map, SLAM
+from extensions.logs import logging
 
-PORT_NAME = 'COM6'
-FPS = 120
+logger = logging.getLogger(__name__)
 
 
 class AnimatedWindow:
@@ -22,28 +22,39 @@ class AnimatedWindow:
     def clear(self):
         self.ax.cla()
 
-f = lambda x: np.random.normal(x, 0.1, (10, 2))
 
 def run():
-    lidar = RPLidar(PORT_NAME)
+    lidar = RP_A1()
     window = AnimatedWindow()
-    iterator = lidar.iter_scans()
-    while True:
-        try:
+    last_scan = lidar.readCartesian()
+    max_side = 12/(2**0.5)*1000
+    ancles = np.array([[-max_side, -max_side], [-max_side, max_side], [max_side, max_side], [max_side, -max_side], [-max_side, -max_side]]).T
+    map = Map(800)
+    slam = SLAM(lidar, map)
+    try:
+        while True:
             window.clear()
-            start = perf_counter()
-            scan = next(iterator)
-            points = np.array([(b*np.cos(np.radians(a)), b*np.sin(np.radians(a))) for (_, a, b) in scan])
+            window.ax.plot(*ancles)
+            points = lidar.readCartesian()
+            u = iterative_closest_point(points, last_scan)
+            last_scan = points
+            x, y, t = transform_to_pose(u)
             window.scatter(points)
+            window.scatter(((x, y), ))
             window.refresh()
-            deltaTime = (perf_counter()-start)
-            if deltaTime < 1/FPS:
-                sleep(1/FPS - deltaTime)
-        except RPLidarException:
-            break
-    plt.show()
-    lidar.stop()
-    lidar.disconnect()
+            pose = slam.update(*lidar.getScan())
+            map.animate()
+    except RPLidarException:
+        pass
+    except ValueError as e:
+        if str(e) == "Window does not exist.":
+            pass
+        else:
+            print(e)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        lidar.exit()
 
 if __name__ == '__main__':
     run()

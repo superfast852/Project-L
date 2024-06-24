@@ -1,11 +1,13 @@
 # TODO: Adopt new coordinate system (Right Hand Rule: X=Forward, Y=Left, Z=Up)
 # NOTE: In the driver code, motors 1 and 3 are flipped.
+# TODO: Tune the PID controllers, get the Encoder Speed at max motor speed (max tick speed), deprecate MecanumKinematics, tune the LowPassFilter.
 
 from threading import Thread
 from _thread import interrupt_main
-from extensions.tools import getAngle, smoothSpeed, find_port_by_vid_pid, np, limit, ecd
+from extensions.tools import smoothSpeed, find_port_by_vid_pid, np, limit, ecd
+from simple_pid import PID
 from extensions.NavStack import SLAM
-from extensions.logs import logging
+from extensions.logs import logging, load_json
 from breezyslam.sensors import RPLidarA1
 from rplidar import RPLidar as rpl, RPLidarException
 from itertools import groupby
@@ -15,9 +17,11 @@ import time
 import serial
 import threading
 import ikpy.chain
+from atexit import register
 
 global_start = time.time()
 logger = logging.getLogger(__name__)
+params = load_json()
 
 
 class LowPassFilter:
@@ -44,13 +48,11 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB0", delay=.002, debug=False):
-        port = find_port_by_vid_pid(self.VID, self.PID)
-        self.ser = serial.Serial(port, 115200)
-        if not self.ser.is_open:
-            self.ser = serial.Serial(com, 115200)
+    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", pid_freq=30, max_tick_speed=3000, debug=False, open=True):
+        if open:
+            port = find_port_by_vid_pid(self.VID, self.PID)
+            self.ser = serial.Serial(port, 115200)
 
-        self.__delay_time = delay
         self.__debug = debug
 
         self.__HEAD = 0xFF
@@ -122,11 +124,18 @@ class Rosmaster(object):
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c)) * 2*np.pi
         self.alpha = 1
         self.steps = list(range(0, 17, 4))
-
+        self.timestampSecondsPrev = None
         self.filters = [LowPassFilter(self.alpha) for i in range(4)]
-
         self.enc_mod = enc_mod
         self.last_update = time.time()
+
+        global params
+        self.pid_params = params.get("pid_params", {"lf": '(1, 0, 0)', "rf": '(1, 0, 0)', "lb": '(1, 0, 0)', "rb": '(1, 0, 0)'})
+        self.pid = [PID(*eval(params), setpoint=0, output_limits=(-100, 100)) for params in self.pid_params.values()]
+        self.speeds = [0, 0, 0, 0]
+        self.pid_delay = 1/pid_freq
+        self.mts = max_tick_speed
+        self.pid_loop = Thread(target=self.update_pid, daemon=True)
 
         self.__read_id = 0
         self.__read_val = 0
@@ -152,29 +161,44 @@ class Rosmaster(object):
         self.__akm_def_angle = 100
         self.__akm_readed_angle = False
         self.__AKM_SERVO_ID = 0x01
+        if open:
+            if self.ser.is_open:
+                self.create_receive_threading()
+                while self.__battery_voltage > 0:
+                    ...
+                self.pid_loop.start()
+                logger.info("[Driver] Rosmaster Serial Opened.")
+                self.set_car_type(car_type)
+            else:
+                logger.error("[Driver] Serial Open Failed!")
+                raise OSError("Serial Open Failed!")
 
-        if self.__debug:
-            logger.debug("[Driver] cmd_delay=" + str(self.__delay_time) + "s")
 
-        if self.ser.is_open:
+    def open_serial(self):
+        port = find_port_by_vid_pid(self.VID, self.PID)
+        self.ser = serial.Serial(port, 115200)
+        if not self.ser.is_open:
+            self.ser.open()
             self.create_receive_threading()
-            while self.__battery_voltage < 0:
+            while self.__battery_voltage > 0:
                 ...
+            self.pid_loop.start()
             logger.info("[Driver] Rosmaster Serial Opened.")
-            self.set_car_type(car_type)
+            self.set_car_type(self.__CAR_TYPE)
         else:
             logger.error("[Driver] Serial Open Failed!")
             raise OSError("Serial Open Failed!")
 
-
     def __del__(self):
-        self.ser.close()
-        self.__uart_state = 0
-        logger.info("[Driver] serial Close!")
-        del self
+        try:
+            self.ser.close()
+            self.__uart_state = 0
+            del self
+        except AttributeError:
+            pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.set_motor()  # brake before exit.
+        self._setm()  # brake before exit.
         self.__del__()
 
     # According to the type of data frame to make the corresponding parsing
@@ -220,7 +244,7 @@ class Rosmaster(object):
                 if self.prev_enc[i] is not None:
                     self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
                 self.prev_enc[i] = self.encoders[i]
-            self.stat_update(time_diff)
+            self.pose_update(time_diff)
 
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
@@ -254,6 +278,17 @@ class Rosmaster(object):
         elif ext_type == self.FUNC_ARM_OFFSET:
                 self.__arm_offset_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
                 self.__arm_offset_state = struct.unpack('B', bytearray(ext_data[1:2]))[0]
+
+    def update_pid(self):
+        speeds = [0, 0, 0, 0]
+        while self.__uart_state:
+            start = time.time()
+            for i, pid in enumerate(self.pid):
+                pid.setpoint = self.speeds[i]
+                speeds[i] += pid(self.enc_speed[i]/self.mts)
+                self._setm(*speeds)
+            time.sleep(self.pid_delay-(time.time()-start))  # Ensure dt stays steady.
+        self._setm()  # brake.
 
     def __receive_data(self):
         while self.__uart_state:
@@ -317,7 +352,7 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except Exception as e:
             print('---set_auto_report_state error!---')
             print(e)
@@ -338,7 +373,7 @@ class Rosmaster(object):
             self.ser.write(cmd)
             if self.__debug:
                 logger.debug("beep:", cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except Exception as e:
             logger.warning(f'[Driver] ---set_beep error: {e}')
             pass
@@ -359,7 +394,7 @@ class Rosmaster(object):
             self.ser.write(cmd)
             if self.__debug:
                 logger.debug(f"pwmServo: {cmd}")
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except Exception as e:
             logger.warning(f'---set_pwm_servo error: {e}')
 
@@ -383,7 +418,7 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except:
             logger.warning('[Driver] ---set_pwm_servo_all error!---')
             pass
@@ -402,7 +437,7 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except:
             logger.warning('[Driver] ---set_colorful_lamps error!---')
             pass
@@ -421,14 +456,19 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except:
             logger.warning('[Driver] ---set_colorful_effect error!---')
             pass
 
     # Control PWM pulse of motor to control speed (speed measurement without encoder). speed_X=[-100, 100]
     # Note, we may or may not use the integrated pid controller for it, idk.
+
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
+        self.speeds = [speed_1, speed_2, speed_3, speed_4]
+        time.sleep(self.pid_delay)
+
+    def _setm(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
             if speed_1 == 127:
                 t_speed_a = 127
@@ -454,7 +494,7 @@ class Rosmaster(object):
             self.ser.write(cmd)
             if self.__debug:
                 logger.debug(f"[Driver] motor: {cmd}")
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
         except IndexError as e:
             logger.warning(f'---set_motor error: {e}')
 
@@ -477,7 +517,7 @@ class Rosmaster(object):
             checksum = sum(cmd, self.__COMPLEMENT) & 0xff
             cmd.append(checksum)
             self.ser.write(cmd)
-            time.sleep(self.__delay_time)
+            time.sleep(.002)
             time.sleep(.1)
         except:
             print('---reset_flash_value error!---')
@@ -525,7 +565,7 @@ class Rosmaster(object):
         else:
             print("set_car_type input invalid")
 
-    def stat_update(self, dt):
+    def pose_update(self, dt):
         self.revs = [i / self.tpr for i in self.enc_speed]  # this turns the pose into revolution-based
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
         self.pose[0] += round(self.x(*self.revs) * dt, 5)
@@ -533,12 +573,42 @@ class Rosmaster(object):
         self.pose[2] += round(self.w(*self.revs) * dt, 5)
         self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
 
-driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3)
+    def computePoseChange(self, timestamp=None):
+        timestamp = time.time() - global_start if timestamp is None else timestamp
+        dXMillimeters = 0
+        dYMillimeters = 0
+        dthetaDegrees = 0
+        dtSeconds = 0
+
+        # Extract odometry
+        FL, FR, RL, RR = [self.revs[i] - self.prev_enc[i] for i in range(4)]
+        self.prev_ticks = self.revs.copy()
+
+        if self.timestampSecondsPrev is not None:
+
+            # Compute motion components based on mecanum equations
+            dXMillimeters = self.x(FL, FR, RL, RR)
+            dYMillimeters = self.y(FL, FR, RL, RR)
+            dthetaDegrees = self.w(FL, FR, RL, RR)
+
+            dtSeconds = timestamp - self.timestampSecondsPrev
+
+        # Store current timestamp for next time
+        self.timestampSecondsPrev = timestamp
+
+        dxyMillimeters = (dXMillimeters ** 2 + dYMillimeters ** 2) ** 0.5  # Total distance in XY plane
+
+        # Return dXY, dtheta, and dt
+        return dxyMillimeters, dthetaDegrees, dtSeconds
 
 
-# This is a raw driving output class.
-# It's only function is to move the robot in the direction and speed directed.
-# Custom driving functions can build on top of this class.
+port = find_port_by_vid_pid(Rosmaster.VID, Rosmaster.PID)
+if port is None:
+    logging.warning("[Driver] No Rosmaster Found. Will continue without initializing.")
+else:
+    driver = Rosmaster(car_type=Rosmaster.CARTYPE_X3, open=port is not None)
+
+
 class Drive:  # TODO: Implement self.max properly
     max_speed = 1.0  # Measure this later.
 
@@ -562,8 +632,15 @@ class Drive:  # TODO: Implement self.max properly
                             (1, -1, 1, -1), (-1, 1, -1, 1))  # RotateRight, RotateLeft
 
     # Movement Functions
-    def cartesian(self, x, y, speed=1, turn=0):
+    def cartesian(self, x, y, speed=1, turn=0, notches = True):
         theta = np.arctan2(y, -x)
+
+        if notches:
+            notches = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+
+            # Find the closest notch
+            theta = min(notches, key=lambda notch: abs(theta - notch))
+
         if theta in self.collision_fn(self.arg):
             logger.warning("[Drive] Would Collide at angle "+str(theta))
             self.brake()
@@ -636,11 +713,14 @@ class Drive:  # TODO: Implement self.max properly
     def switchDrive(self):
         self.mecanum = not self.mecanum
 
-    def brake(self):
+    def brake(self):  # TODO: This is a rough patch, we need to test.
         self.braking = 1
         self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
+        driver.speeds = [0, 0, 0, 0]
+        driver._setm(self.lf, self.rf, self.lb, self.rb)
         time.sleep(0.2)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
+        driver._setm(0, 0, 0, 0)
         self.braking = 0
 
     def smoothBrake(self, break_time=1):
@@ -801,25 +881,29 @@ class RP_A1(RPLidarA1):
     VID = 0x10c4
     PID = 0xea60
 
-    def __init__(self, com="/dev/ttyUSB2", baudrate=115200, timeout=3, rotation=0, scan_type="normal", threaded=True):
+    def __init__(self, com="/dev/ttyUSB0", baudrate=115200, timeout=3, rotation=0, scan_type="normal", threaded=True):
         super().__init__()
+        self.exit_called = False
+        self.t = threaded
         port = find_port_by_vid_pid(self.VID, self.PID)
         self.lidar = rpl(port, baudrate, timeout)
-        logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
+        try:
+            logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
+        except RPLidarException:
+            self.lidar = rpl(port, baudrate, timeout)
+            logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
         self.lidar.clean_input()
         self.scanner = self.lidar.iter_scans(scan_type, False, 10)
 
         next(self.scanner)
         self.rotation = rotation % 360
         if isinstance(threaded, SLAM):
-            self.t = True
             self.latest = [[0], [0]]
             self.pose = [0, 0, 0]
             self.scans = Thread(target=self.threaded_mapping, daemon=True, args=(threaded,))
             self.scans.start()
             pass
         elif threaded:
-            self.t = True
             self.latest = [[0], [0]]
             self.scans = Thread(target=self.threaded_read, daemon=True)
             self.scans.start()
@@ -850,17 +934,20 @@ class RP_A1(RPLidarA1):
         return [list(distances), list(angles)]
 
     def exit(self):
-        self.lidar.stop()
-        self.lidar.stop_motor()
-        self.lidar.disconnect()
+        if self.exit_called:
+            return
         if self.t:
             self.t = False
             self.scans.join()
+        self.lidar.stop()
+        self.lidar.stop_motor()
+        self.lidar.disconnect()
+        self.exit_called = True
 
     def readCartesian(self):
         distance, angle = np.array(self.getScan())
         angle = np.deg2rad(angle)
-        return distance*np.cos(angle), distance*np.sin(angle)
+        return np.array([distance*np.cos(angle), distance*np.sin(angle)]).T
 
     def autoStopCollision(self, collision_threshold=300):
         # This returns only the clear angles.
@@ -982,30 +1069,4 @@ class MecanumKinematics:  # units in centimeters.
         notxy = x - y
         return [recip * (notxy - turn), recip * (xy + turn), recip * (xy - turn), recip * (notxy + turn)]
 
-    def computePoseChange(self, timestamp=None):
-        timestamp = time.time() - global_start if timestamp is None else timestamp
-        dXMillimeters = 0
-        dYMillimeters = 0
-        dthetaDegrees = 0
-        dtSeconds = 0
 
-        # Extract odometry
-        FL, FR, RL, RR = [self.revs[i] - self.prev_ticks[i] for i in range(4)]
-        self.prev_ticks = self.revs.copy()
-
-        if self.timestampSecondsPrev is not None:
-
-            # Compute motion components based on mecanum equations
-            dXMillimeters = self.x(FL, FR, RL, RR)
-            dYMillimeters = self.y(FL, FR, RL, RR)
-            dthetaDegrees = self.w(FL, FR, RL, RR)
-
-            dtSeconds = timestamp - self.timestampSecondsPrev
-
-        # Store current timestamp for next time
-        self.timestampSecondsPrev = timestamp
-
-        dxyMillimeters = (dXMillimeters ** 2 + dYMillimeters ** 2) ** 0.5  # Total distance in XY plane
-
-        # Return dXY, dtheta, and dt
-        return dxyMillimeters, dthetaDegrees, dtSeconds

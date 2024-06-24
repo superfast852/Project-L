@@ -1,12 +1,18 @@
 {
   "doc": "This is the robot config file. Before starting the robot, it's a good idea to check this file to make sure everything is correct.",
-  "level": "20",
+  "level": 20,
   "main": "main.py",
-  "map": "800",
+  "map": 800,
   "steer": {
-    "kp": "0.1",
-    "ki": "0.1",
-    "kd": "0.1"
+    "kp": 0.1,
+    "ki": 0.1,
+    "kd": 0.1
+  },
+  "motors": {
+    "lf": "(1.0, 0.1, 0.1)",
+    "rf": "(1.0, 0.1, 0.1)",
+    "lb": "(1.0, 0.1, 0.1)",
+    "rb": "(1.0, 0.1, 0.1)"
   },
   "strategy": {
     "agressive": "A mode where it tries to optimize for shorter paths and tighter turns",
