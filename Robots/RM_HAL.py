@@ -2,7 +2,7 @@
 # NOTE: In the driver code, motors 1 and 3 are flipped.
 # TODO: Tune the PID controllers, get the Encoder Speed at max motor speed (max tick speed), deprecate MecanumKinematics, tune the LowPassFilter.
 
-from threading import Thread
+from threading import Thread, Lock
 from _thread import interrupt_main
 from extensions.tools import smoothSpeed, find_port_by_vid_pid, np, limit, ecd
 from simple_pid import PID
@@ -18,6 +18,8 @@ import serial
 import threading
 import ikpy.chain
 from atexit import register
+from collections import deque
+from numba import njit
 
 global_start = time.time()
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ params = load_json()
 
 
 class LowPassFilter:
-    def __init__(self, alpha):
+    def __init__(self, alpha=0.2):
         self.alpha = alpha
         self.last_value = None
 
@@ -37,13 +39,17 @@ class LowPassFilter:
         self.last_value = filtered_value
         return filtered_value
 
+    def __call__(self, x):
+        return self.filter(x)
 
 class KalmanFilter:
-    def __init__(self, process_variance=1e-5, measurement_variance=1e-1, estimate_variance=1.0, initial_estimate=0.0):
+    def __init__(self, process_variance=1e-3, measurement_variance=5e-1, estimate_variance=0, initial_estimate=0.0):
         #<-slow response | sensitive to noise->
         self.process_variance = process_variance  # Increase respective to trust in measurement changes
-        #<-responsive, sensitive to noise | smoother, less sensitive to noise->
+
+        #<-responsive, sensitive to noise | slower, less sensitive to noise->
         self.measurement_variance = measurement_variance  # Increase respective to how uncertain you expect the readings to be
+
         #<-sticks to initial measurement | adaptive to new measurements ->
         self.estimate_variance = estimate_variance  # Set high for quick reading adaptment, low if you trust the initial estimate
         self.current_estimate = initial_estimate
@@ -72,7 +78,7 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", pid_freq=30, max_tick_speed=3000, debug=False, open=True, kalman=True):
+    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", max_tick_speed=2100, debug=False, open=True):
         if open:
             port = find_port_by_vid_pid(self.VID, self.PID)
             self.ser = serial.Serial(port, 115200)
@@ -135,9 +141,9 @@ class Rosmaster(object):
         self.__roll = 0
         self.__pitch = 0
 
-        self.encoders = [0, 0, 0, 0]
-        self.enc_speed = [0, 0, 0, 0]
+        self.encoders = [None]*4
         self.prev_enc = [None]*4
+        self.enc_speed = [0, 0, 0, 0]
         self.pose = [0, 0, 0]
         self.vec = (0, 0)
         self.w2c = 24
@@ -146,59 +152,39 @@ class Rosmaster(object):
         self.y = lambda lf, rf, lb, rb: (lf - rf - lb + rb) * (self.r / 4) * np.sin(self.pose[2])
         self.x = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.cos(self.pose[2])
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c)) * 2*np.pi
-        self.alpha = 1
+        self.speed_t = Thread(target=self.calc_speed, daemon=True)
+
         self.steps = list(range(0, 17, 4))
         self.timestampSecondsPrev = None
-        if kalman:
-            self.filters = [KalmanFilter() for i in range(4)]
-        else:
-            self.filters = [LowPassFilter(self.alpha) for i in range(4)]
         self.enc_mod = enc_mod
         self.last_update = time.time()
 
         global params
         self.pid_params = params.get("motors", {"lf": '(1, 0, 0)', "rf": '(1, 0, 0)', "lb": '(1, 0, 0)', "rb": '(1, 0, 0)'})
-        self.pid = [PID(*eval(params), setpoint=0, output_limits=(-100, 100)) for params in self.pid_params.values()]
-        self.speeds = [0, 0, 0, 0]
-        self.pid_delay = 1/pid_freq
+        self.pid = [PID(*eval(tunings), setpoint=0, output_limits=(-20, 20)) for tunings in self.pid_params.values()]
+        self.target_speeds = [0, 0, 0, 0]
         self.mts = max_tick_speed
         self.pid_loop = Thread(target=self.update_pid, daemon=True)
+        self.dt = 0
+        self.data = [0, 0, 0, 0]
 
-        self.__read_id = 0
-        self.__read_val = 0
-
-        self.__read_arm_ok = 0
         self.__read_arm = [-1, -1, -1, -1, -1, -1]
-
-        self.__version_H = 0
-        self.__version_L = 0
-        self.__version = 0
-
-        self.__pid_index = 0
-        self.__kp1 = 0
-        self.__ki1 = 0
-        self.__kd1 = 0
-
-        self.__arm_offset_state = 0
-        self.__arm_offset_id = 0
-        self.__arm_ctrl_enable = True
 
         self.__battery_voltage = -10.0
 
-        self.__akm_def_angle = 100
-        self.__akm_readed_angle = False
-        self.__AKM_SERVO_ID = 0x01
         if open:
             if self.ser.is_open:
                 self.create_receive_threading()
-                while self.__battery_voltage > 0:
+                while self.encoders[0] is None or self.prev_enc[0] is None:
                     ...
-                self.pid_loop.start()
+                # self.pid_loop.start()
+                self.speed_t.start()
                 logger.info("[Driver] Rosmaster Serial Opened.")
                 self.set_car_type(car_type)
             else:
                 logger.error("[Driver] Serial Open Failed!")
                 raise OSError("Serial Open Failed!")
+        register(self.__del__)
 
 
     def open_serial(self):
@@ -218,19 +204,116 @@ class Rosmaster(object):
 
     def __del__(self):
         try:
-            self.ser.close()
+            print("Called delete.")
             self.__uart_state = 0
+            self.pid_loop.join()
+            self.ser.close()
             del self
         except AttributeError:
             pass
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type=0, exc_val=1, exc_tb=2):
         self._setm()  # brake before exit.
         self.__del__()
+        time.sleep(1/30)
+        prev_err = None
+        while self.__uart_state:
+            # Encoder lock condition (replace 'if 1:' with actual condition)
+            curr_time = time.perf_counter()
+            dt = curr_time - last_time
+            self.dt = dt
+ 
+            last_time = curr_time
+            #last_dt = dt
+            # Ensure time_diff is positive and reasonable
+            with self.enc_lock:
+                # Update last_time for next iteration
+                if self.prev_enc[0] is None:
+                    continue
+                for i in range(4):
+                    # Getting necessary data
+                    read, prev = self.encoders[i], self.prev_enc[i]
+                    # Skip conditions:
+                    if read == prev:
+                        continue
+                    if self.raw[i] != 0:
+                        curr_err = abs((read-prev)*30 - self.raw[3])/self.raw[3]  # left it here yesterday.
+                        if prev_err is None:
+                            prev_err = curr_err
+                            continue
+                        if abs(curr_err - prev_err)/prev_err > 0.1:
+                            print(abs(curr_err - prev_err)/prev_err, curr_err, prev_err)
+                            continue
+                        prev_err = curr_err
+                    #else:
+                    slope = self.raw[i] = (read-prev)*30  # Rough speed
+                    self.unfiltered[i] = self.pp[i].filter(slope)
+                    self.enc_speed[i] = self.filters[i].filter(self.unfiltered[i])
+                self.pose_update(1/30)
+                # Use time_diff for controlling loop rate
+            time.sleep(max(1/30-(time.perf_counter()-curr_time), 0))
 
+    @staticmethod
+    @njit
+    def central_difference_velocity(positions, dt):
+        slopes = [(positions[i]-positions[i-1])/dt for i in range(1, len(positions))]
+        prev_slope = slopes[0]
+        out = []
+        for i in range(1, len(slopes)):
+            curr = slopes[i]
+            if prev_slope != 0 and abs(prev_slope-curr)/abs(prev_slope) > 0.5:
+                out.append(prev_slope)
+            else:
+                out.append(curr)
+                prev_slope = curr
+        return sum(out)/len(out)
+
+        window_size = 10
+        smoothing_window = 3
+        positions = deque(maxlen=window_size)
+        prev_time = time.perf_counter()
+        time.sleep(1/40)
+        while self.__uart_state:
+            current_position = self.encoders[3]
+            positions.appendleft(current_position)
+            curr_time = time.perf_counter()
+            dt = prev_time - curr_time
+            prev_time = curr_time
+
+            if len(positions) == window_size:
+                velocities = self.central_difference_velocity(list(positions), dt)
+                v = velocities#v = self.moving_average(velocities, smoothing_window)
+                self.raw[3] = v
+                print(v)
+            time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0))
+                
+    def calc_speed(self):
+        prev_time = time.perf_counter()
+        windows = [deque(maxlen=15) for i in range(4)]
+        for i in range(4):
+            for j in range(15):
+                windows[i].append(self.encoders[i])
+        time.sleep(1/60)
+        while self.__uart_state:
+            curr_time = time.perf_counter()
+            a_dt = curr_time - prev_time
+            prev_time = curr_time
+            self.dt = a_dt
+            for i in range(4):
+                enc = self.encoders[i]
+                windows[i].append(enc)
+                self.enc_speed[i] = self.central_difference_velocity(list(windows[i]), 1/30)
+            time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0)) 
+            
     # According to the type of data frame to make the corresponding parsing
     def __parse_data(self, ext_type, ext_data):
-        if ext_type == self.FUNC_REPORT_SPEED:
+        # Encoder data on all four wheels
+        if ext_type == self.FUNC_REPORT_ENCODER:
+            if self.encoders[0] is not None:
+                self.prev_enc = self.encoders.copy()
+            self.encoders = [round(struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0]*self.enc_mod[i]) for i in range(4)]
+                
+        elif ext_type == self.FUNC_REPORT_SPEED:
             self.__vx = int(struct.unpack('h', bytearray(ext_data[0:2]))[0]) / 1000.0
             self.__vy = int(struct.unpack('h', bytearray(ext_data[2:4]))[0]) / 1000.0
             self.__vz = int(struct.unpack('h', bytearray(ext_data[4:6]))[0]) / 1000.0
@@ -258,23 +341,6 @@ class Rosmaster(object):
             self.__roll = struct.unpack('h', bytearray(ext_data[0:2]))[0] / 10000.0
             self.__pitch = struct.unpack('h', bytearray(ext_data[2:4]))[0] / 10000.0
             self.__yaw = struct.unpack('h', bytearray(ext_data[4:6]))[0] / 10000.0
-
-        # Encoder data on all four wheels
-        elif ext_type == self.FUNC_REPORT_ENCODER:
-
-            self.encoders = [struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0] for i in range(4)]
-            # deltaTime calculation
-            timing = time.time()
-            time_diff = timing-self.last_update
-            self.last_update = timing
-
-            for i in range(4):
-                self.encoders[i] = round(self.encoders[i]*self.enc_mod[i])  # get encoder readings
-                if self.prev_enc[i] is not None:
-                    # speed = filter((current-prev)/deltaTime)
-                    self.enc_speed[i] = self.filters[i].filter((self.encoders[i]-self.prev_enc[i])/time_diff)
-                self.prev_enc[i] = self.encoders[i]
-            self.pose_update(time_diff)
 
         elif ext_type == self.FUNC_UART_SERVO:
             self.__read_id = struct.unpack('B', bytearray(ext_data[0:1]))[0]
@@ -312,12 +378,11 @@ class Rosmaster(object):
     def update_pid(self):
         speeds = [0, 0, 0, 0]
         while self.__uart_state:
-            start = time.time()
             for i, pid in enumerate(self.pid):
-                pid.setpoint = self.speeds[i]
-                speeds[i] += pid(self.enc_speed[i]/self.mts)
-                self._setm(*speeds)
-            time.sleep(self.pid_delay-(time.time()-start))  # Ensure dt stays steady.
+                pid.setpoint = self.target_speeds[i]
+                speeds[i] += int(pid(self.raw[i]))
+            self._setm(*speeds)
+            time.sleep(1/30)  # Ensure dt stays steady.
         self._setm()  # brake.
 
     def __receive_data(self):
@@ -495,8 +560,9 @@ class Rosmaster(object):
     # Note, we may or may not use the integrated pid controller for it, idk.
 
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
-        self.speeds = [speed_1, speed_2, speed_3, speed_4]
-        time.sleep(self.pid_delay)
+        c = self.mts/100
+        self.target_speeds = [speed_1*c, speed_2*c, speed_3*c, speed_4*c]
+        time.sleep(1/120)
 
     def _setm(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
@@ -594,14 +660,14 @@ class Rosmaster(object):
             time.sleep(.1)
         else:
             print("set_car_type input invalid")
-
+    
     def pose_update(self, dt):
         self.revs = [i / self.tpr for i in self.enc_speed]  # this turns the pose into revolution-based
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
         self.pose[0] += round(self.x(*self.revs) * dt, 5)
         self.pose[1] += round(self.y(*self.revs) * dt, 5)
         self.pose[2] += round(self.w(*self.revs) * dt, 5)
-        self.vec = (ecd(*self.pose[:2]), np.arctan2(*self.pose[1::-1]))
+        #self.vec = (np.hypot(self.pose[0], self.pose[1]), np.arctan2(*self.pose[1::-1]))
 
     def computePoseChange(self, timestamp=None):
         timestamp = time.time() - global_start if timestamp is None else timestamp
@@ -746,7 +812,7 @@ class Drive:  # TODO: Implement self.max properly
     def brake(self):  # TODO: This is a rough patch, we need to test.
         self.braking = 1
         self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
-        driver.speeds = [0, 0, 0, 0]
+        driver.target_speeds = [0, 0, 0, 0]
         driver._setm(self.lf, self.rf, self.lb, self.rb)
         time.sleep(0.2)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
