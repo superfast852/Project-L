@@ -267,6 +267,25 @@ class Rosmaster(object):
                 out.append(curr)
                 prev_slope = curr
         return sum(out)/len(out)
+
+        window_size = 10
+        smoothing_window = 3
+        positions = deque(maxlen=window_size)
+        prev_time = time.perf_counter()
+        time.sleep(1/40)
+        while self.__uart_state:
+            current_position = self.encoders[3]
+            positions.appendleft(current_position)
+            curr_time = time.perf_counter()
+            dt = prev_time - curr_time
+            prev_time = curr_time
+
+            if len(positions) == window_size:
+                velocities = self.central_difference_velocity(list(positions), dt)
+                v = velocities#v = self.moving_average(velocities, smoothing_window)
+                self.raw[3] = v
+                print(v)
+            time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0))
                 
     def calc_speed(self):
         prev_time = time.perf_counter()
