@@ -9,10 +9,10 @@
     "kd": 0.1
   },
   "motors": {
-    "lf": "(0.0, 0.00, 0.0)",
-    "rf": "(0.0, 0.00, 0.0)",
-    "lb": "(0.0, 0.00, 0.0)",
-    "rb": "(0.001, 0, 0)"
+    "lf": "(0.005, 0.00, 0.001)",
+    "rf": "(0.005, 0.00, 0.001)",
+    "lb": "(0.005, 0.00, 0.001)",
+    "rb": "(0.005, 0.00, 0.001)"
   },
   "strategy": {
     "agressive": "A mode where it tries to optimize for shorter paths and tighter turns",

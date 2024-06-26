@@ -78,7 +78,7 @@ class Rosmaster(object):
     VID = 0x1a86
     PID = 0x7523
 
-    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", max_tick_speed=2100, debug=False, open=True):
+    def __init__(self, car_type=0x02, enc_mod=(-1, 1, -362/1314, 362/1314), com="/dev/ttyUSB1", max_tick_speed=2600, debug=False, open=True):
         if open:
             port = find_port_by_vid_pid(self.VID, self.PID)
             self.ser = serial.Serial(port, 115200)
@@ -153,6 +153,7 @@ class Rosmaster(object):
         self.x = lambda lf, rf, lb, rb: (lf + rf + lb + rb) * (self.r / 4) * np.cos(self.pose[2])
         self.w = lambda lf, rf, lb, rb: (lf - rf + lb - rb) * (self.r / (4 * self.w2c)) * 2*np.pi
         self.speed_t = Thread(target=self.calc_speed, daemon=True)
+        self.raw = [0, 0, 0, 0]
 
         self.steps = list(range(0, 17, 4))
         self.timestampSecondsPrev = None
@@ -161,7 +162,7 @@ class Rosmaster(object):
 
         global params
         self.pid_params = params.get("motors", {"lf": '(1, 0, 0)', "rf": '(1, 0, 0)', "lb": '(1, 0, 0)', "rb": '(1, 0, 0)'})
-        self.pid = [PID(*eval(tunings), setpoint=0, output_limits=(-20, 20)) for tunings in self.pid_params.values()]
+        self.pid = [PID(*eval(tunings), setpoint=0, output_limits=(-5, 5)) for tunings in self.pid_params.values()]
         self.target_speeds = [0, 0, 0, 0]
         self.mts = max_tick_speed
         self.pid_loop = Thread(target=self.update_pid, daemon=True)
@@ -177,7 +178,7 @@ class Rosmaster(object):
                 self.create_receive_threading()
                 while self.encoders[0] is None or self.prev_enc[0] is None:
                     ...
-                # self.pid_loop.start()
+                self.pid_loop.start()
                 self.speed_t.start()
                 logger.info("[Driver] Rosmaster Serial Opened.")
                 self.set_car_type(car_type)
@@ -267,25 +268,6 @@ class Rosmaster(object):
                 out.append(curr)
                 prev_slope = curr
         return sum(out)/len(out)
-
-        window_size = 10
-        smoothing_window = 3
-        positions = deque(maxlen=window_size)
-        prev_time = time.perf_counter()
-        time.sleep(1/40)
-        while self.__uart_state:
-            current_position = self.encoders[3]
-            positions.appendleft(current_position)
-            curr_time = time.perf_counter()
-            dt = prev_time - curr_time
-            prev_time = curr_time
-
-            if len(positions) == window_size:
-                velocities = self.central_difference_velocity(list(positions), dt)
-                v = velocities#v = self.moving_average(velocities, smoothing_window)
-                self.raw[3] = v
-                print(v)
-            time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0))
                 
     def calc_speed(self):
         prev_time = time.perf_counter()
@@ -310,7 +292,10 @@ class Rosmaster(object):
         # Encoder data on all four wheels
         if ext_type == self.FUNC_REPORT_ENCODER:
             if self.encoders[0] is not None:
+                if self.prev_enc[0] is not None:
+                    self.raw = [(self.encoders[i] - self.prev_enc[i])*24 for i in range(4)]
                 self.prev_enc = self.encoders.copy()
+                
             self.encoders = [round(struct.unpack('i', bytearray(ext_data[self.steps[i]:self.steps[i+1]]))[0]*self.enc_mod[i]) for i in range(4)]
                 
         elif ext_type == self.FUNC_REPORT_SPEED:
@@ -380,9 +365,9 @@ class Rosmaster(object):
         while self.__uart_state:
             for i, pid in enumerate(self.pid):
                 pid.setpoint = self.target_speeds[i]
-                speeds[i] += int(pid(self.raw[i]))
+                speeds[i] += int(pid(self.enc_speed[i]))
             self._setm(*speeds)
-            time.sleep(1/30)  # Ensure dt stays steady.
+            time.sleep(1/20)  # Ensure dt stays steady.
         self._setm()  # brake.
 
     def __receive_data(self):
