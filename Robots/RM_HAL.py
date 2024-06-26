@@ -178,7 +178,7 @@ class Rosmaster(object):
                 self.create_receive_threading()
                 while self.encoders[0] is None or self.prev_enc[0] is None:
                     ...
-                self.pid_loop.start()
+                # self.pid_loop.start()
                 self.speed_t.start()
                 logger.info("[Driver] Rosmaster Serial Opened.")
                 self.set_car_type(car_type)
@@ -205,7 +205,6 @@ class Rosmaster(object):
 
     def __del__(self):
         try:
-            print("Called delete.")
             self.__uart_state = 0
             self.pid_loop.join()
             self.ser.close()
@@ -216,43 +215,6 @@ class Rosmaster(object):
     def __exit__(self, exc_type=0, exc_val=1, exc_tb=2):
         self._setm()  # brake before exit.
         self.__del__()
-        time.sleep(1/30)
-        prev_err = None
-        while self.__uart_state:
-            # Encoder lock condition (replace 'if 1:' with actual condition)
-            curr_time = time.perf_counter()
-            dt = curr_time - last_time
-            self.dt = dt
- 
-            last_time = curr_time
-            #last_dt = dt
-            # Ensure time_diff is positive and reasonable
-            with self.enc_lock:
-                # Update last_time for next iteration
-                if self.prev_enc[0] is None:
-                    continue
-                for i in range(4):
-                    # Getting necessary data
-                    read, prev = self.encoders[i], self.prev_enc[i]
-                    # Skip conditions:
-                    if read == prev:
-                        continue
-                    if self.raw[i] != 0:
-                        curr_err = abs((read-prev)*30 - self.raw[3])/self.raw[3]  # left it here yesterday.
-                        if prev_err is None:
-                            prev_err = curr_err
-                            continue
-                        if abs(curr_err - prev_err)/prev_err > 0.1:
-                            print(abs(curr_err - prev_err)/prev_err, curr_err, prev_err)
-                            continue
-                        prev_err = curr_err
-                    #else:
-                    slope = self.raw[i] = (read-prev)*30  # Rough speed
-                    self.unfiltered[i] = self.pp[i].filter(slope)
-                    self.enc_speed[i] = self.filters[i].filter(self.unfiltered[i])
-                self.pose_update(1/30)
-                # Use time_diff for controlling loop rate
-            time.sleep(max(1/30-(time.perf_counter()-curr_time), 0))
 
     @staticmethod
     @njit
@@ -288,6 +250,7 @@ class Rosmaster(object):
             time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0)) 
             
     # According to the type of data frame to make the corresponding parsing
+
     def __parse_data(self, ext_type, ext_data):
         # Encoder data on all four wheels
         if ext_type == self.FUNC_REPORT_ENCODER:
@@ -545,9 +508,10 @@ class Rosmaster(object):
     # Note, we may or may not use the integrated pid controller for it, idk.
 
     def set_motor(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
-        c = self.mts/100
-        self.target_speeds = [speed_1*c, speed_2*c, speed_3*c, speed_4*c]
-        time.sleep(1/120)
+        #c = self.mts/100
+        #self.target_speeds = [speed_1*c, speed_2*c, speed_3*c, speed_4*c]
+        #time.sleep(1/120)
+        self._setm(speed_1, speed_2, speed_3, speed_4)
 
     def _setm(self, speed_1=0, speed_2=0, speed_3=0, speed_4=0):
         try:
@@ -628,7 +592,7 @@ class Rosmaster(object):
 
     # Obtain data of four-channel motor encoder
     def get_motor_encoder(self):
-        return self.encoders
+        return self.encoders.copy()
 
     def get_motion_data(self):
         return self.__vx, self.__vy, self.__vz

@@ -1,19 +1,26 @@
 from extensions.logs import logging
 from extensions.NavStack import Map, SLAM, np
-from Robots.RM_HAL import RP_A1, IMU, MecanumKinematics, Drive
+from Robots.RM_HAL import RP_A1, IMU, Drive, driver
 from extensions.XboxController import XboxController
+from networktables import NetworkTables
+from threading import Thread
 from atexit import register
 logger = logging.getLogger(__name__)
 
 map = Map(800)
 lidar = RP_A1()
 imu = IMU()
-kine = MecanumKinematics()
 c = XboxController()
 running = True
 drive = Drive()
 c.atloss = lambda: drive.brake()
 slam = SLAM(lidar, map)
+NetworkTables.initialize("localhost")
+NetworkTables.setUpdateRate(1/60)
+map_table = NetworkTables.getTable("map")
+map_table.putRaw("map", map.toSlam())
+pose = (400, 400, 0)
+
 
 @register
 def kill():
@@ -25,18 +32,22 @@ def kill():
         np.save(f, scan_registry)
 
 
+def update_map():
+    global map_table, map
+    while running:
+        map_table.putRaw("map", map.toSlam())
+        map_table.putNumberArray("pose", pose)
+
+
 scan_registry = []
-last_scan = np.array(lidar.readCartesian())
 c.setTrigger("Start", kill)
 c.setTrigger("Back", drive.switchDrive)
 logger.info("Starting main loop.")
+Thread(target=update_map, daemon=True).start()
 while running:
     js = c.read()
     drive.drive(js[0], js[1], js[4], js[2])
     scan = lidar.getScan()
     scan_registry.append(scan)
-    pose = slam.update(*scan)
-    print(f"Pose: {pose}")
-
-
-
+    odom = driver.computePoseChange()
+    pose = slam.update(*scan, odom)
