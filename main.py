@@ -20,7 +20,7 @@ def kill():
     global running
     running = False
     lidar.exit()
-    map.save()
+    map.save("./Resources/maps/main_scan_map.pkl")
     with open("./Resources/scan_registry.npy", "wb") as f:
         np.save(f, scan_registry)
 
