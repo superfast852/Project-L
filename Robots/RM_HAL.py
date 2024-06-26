@@ -626,8 +626,7 @@ class Rosmaster(object):
         dtSeconds = 0
 
         # Extract odometry
-        FL, FR, RL, RR = [self.revs[i] - self.prev_enc[i] for i in range(4)]
-        self.prev_ticks = self.revs.copy()
+        FL, FR, RL, RR = [(self.encoders[i] - self.prev_enc[i])/self.tpr for i in range(4)]
 
         if self.timestampSecondsPrev is not None:
 

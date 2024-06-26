@@ -12,7 +12,7 @@ map_table = NetworkTables.getTable("map")
 def update():
     global map_table, map, pose
     while True:
-        mapbytes = map_table.getRaw("map", bytearray(800*800))
+        mapbytes = map_table.getRaw("map", bytearray([127]*800*800))
         pose = map_table.getNumberArray("pose", (400, 400, 0))
         map.fromSlam(mapbytes)
 
