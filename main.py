@@ -12,7 +12,7 @@ imu = IMU()
 kine = MecanumKinematics()
 c = XboxController()
 running = True
-drive = Drive(collision_fn=lidar.autoStopCollision)
+drive = Drive()#collision_fn=lidar.autoStopCollision)
 c.atloss = lambda: drive.brake()
 
 @register
@@ -35,7 +35,7 @@ pose = np.array([0, 0, 0])
 c.setTrigger("Start", kill)
 c.setTrigger("Back", drive.switchDrive)
 dev = 10
-add_points(last_scan)
+#add_points(last_scan)
 logger.info("Starting main loop.")
 while running:
     js = c.read()
@@ -49,7 +49,7 @@ while running:
     # Get the points that don't match
     distances = np.linalg.norm(transformed - last_scan, axis=1)
     # add_points(scan[distances > dev])  # Add every point that is too far to be estimated as deviation.
-    map.map[np.argwhere(distances > dev)] = 1
+    # map.map[np.argwhere(distances > dev)] = 1
     # map.animate()
     print(f"Pose: {pose}")
     logger.debug(f"Transform: {t}")
