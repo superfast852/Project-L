@@ -7,6 +7,7 @@ map = Map(800)
 pose = (400, 400, 0)
 NetworkTables.initialize("orinnano.local")
 map_table = NetworkTables.getTable("map")
+NetworkTables.initialize()
 
 
 def update():
@@ -14,11 +15,11 @@ def update():
     while True:
         mapbytes = map_table.getRaw("map", bytearray([127]*800*800))
         pose = map_table.getNumberArray("pose", (400, 400, 0))
-        map.fromSlam(mapbytes)
+        map.fromSlam(bytearray(mapbytes))
 
 
 thread = Thread(target=update, daemon=True)
 thread.start()
 while True:
-    map.animate(pose)
+    map.animate(pose=pose)
     sleep(1/60)

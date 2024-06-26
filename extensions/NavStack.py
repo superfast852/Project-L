@@ -110,7 +110,7 @@ class Map:
         map[map == -1] = 127
         map[map == 0] = 255
         map[map == 1] = 0
-        return bytearray(map.astype(np.uint8).flatten())
+        return bytearray(map.astype(np.uint8).flatten().tolist())
 
     def save(self, name=None):
         if name is None:

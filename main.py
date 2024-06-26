@@ -5,6 +5,7 @@ from extensions.XboxController import XboxController
 from networktables import NetworkTables
 from threading import Thread
 from atexit import register
+from time import sleep
 logger = logging.getLogger(__name__)
 
 map = Map(800)
@@ -15,8 +16,7 @@ running = True
 drive = Drive()
 c.atloss = lambda: drive.brake()
 slam = SLAM(lidar, map)
-NetworkTables.initialize("localhost")
-NetworkTables.setUpdateRate(1/60)
+NetworkTables.initialize()
 map_table = NetworkTables.getTable("map")
 map_table.putRaw("map", map.toSlam())
 pose = (400, 400, 0)
@@ -37,6 +37,8 @@ def update_map():
     while running:
         map_table.putRaw("map", map.toSlam())
         map_table.putNumberArray("pose", pose)
+        print("Updated map.")
+        sleep(1)
 
 
 scan_registry = []
