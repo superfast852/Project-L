@@ -48,8 +48,9 @@ while running:
     transformed = transform_points(t, scan)
     # Get the points that don't match
     distances = np.linalg.norm(transformed - last_scan, axis=1)
-    add_points(scan[distances > dev])  # Add every point that is too far to be estimated as deviation.
-    map.animate()
+    # add_points(scan[distances > dev])  # Add every point that is too far to be estimated as deviation.
+    map.map[np.argwhere(distances > dev)] = 1
+    # map.animate()
     print(f"Pose: {pose}")
     logger.debug(f"Transform: {t}")
     logger.info(f"Deviation: {np.mean(distances)}")
