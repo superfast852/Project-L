@@ -206,7 +206,8 @@ class Rosmaster(object):
     def __del__(self):
         try:
             self.__uart_state = 0
-            self.pid_loop.join()
+            if self.pid_loop.is_alive():
+                self.pid_loop.join()
             self.ser.close()
             del self
         except AttributeError:
