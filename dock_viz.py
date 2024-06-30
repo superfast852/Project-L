@@ -5,6 +5,8 @@ from time import sleep
 
 map = Map(800)
 pose = (400, 400, 0)
+icp_pose = (0, 0, 0)
+driver_pose = (0, 0, 0)
 NetworkTables.initialize("orinnano.local")
 map_table = NetworkTables.getTable("map")
 NetworkTables.initialize()
@@ -19,8 +21,20 @@ def update():
         map.fromSlam(bytearray(mapbytes))
 
 
-thread = Thread(target=update, daemon=True)
+def pose_update():
+    global pose, icp_pose, driver_pose
+    while not NetworkTables.isConnected():
+        pass
+    while True:
+        pose = map_table.getNumberArray("pose", [None, None, None])
+        icp_pose = map_table.getNumberArray("icp_pose", [None, None, None])
+        driver_pose = map_table.getNumberArray("dpose", [None, None, None])
+        sleep(0.5)
+
+
+thread = Thread(target=pose_update, daemon=True)
 thread.start()
 while True:
-    map.animate(pose=pose)
-    sleep(1/60)
+    #map.animate(pose=pose)
+    print(f"Pose Update:\n\t SLAM: {pose}\n\tICP: {icp_pose}\n\tDriver: {driver_pose}")
+    sleep(0.5)

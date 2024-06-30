@@ -246,6 +246,7 @@ class Rosmaster(object):
             for i in range(4):
                 windows[i].append(self.encoders[i])
                 self.enc_speed[i] = self.central_difference_velocity(list(windows[i]), 1/30)
+            self.pose_update(a_dt)
             time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0)) 
             
     # According to the type of data frame to make the corresponding parsing
@@ -612,9 +613,10 @@ class Rosmaster(object):
     def pose_update(self, dt):
         self.revs = [i / self.tpr for i in self.enc_speed]  # this turns the pose into revolution-based
         # This means that 1 turn on a wheel is 10cm of distance. Therefore,
+        self.pose[2] += round(self.w(*self.revs) * dt, 5)
         self.pose[0] += round(self.x(*self.revs) * dt, 5)
         self.pose[1] += round(self.y(*self.revs) * dt, 5)
-        self.pose[2] += round(self.w(*self.revs) * dt, 5)
+
         #self.vec = (np.hypot(self.pose[0], self.pose[1]), np.arctan2(*self.pose[1::-1]))
 
     def computePoseChange(self, timestamp=None):
