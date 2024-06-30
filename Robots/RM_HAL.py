@@ -234,19 +234,17 @@ class Rosmaster(object):
                 
     def calc_speed(self):
         prev_time = time.perf_counter()
-        windows = [deque(maxlen=15) for i in range(4)]
+        windows = [deque(maxlen=5) for i in range(4)]
         for i in range(4):
-            for j in range(15):
+            for j in range(5):
                 windows[i].append(self.encoders[i])
-        time.sleep(1/60)
         while self.__uart_state:
             curr_time = time.perf_counter()
             a_dt = curr_time - prev_time
             prev_time = curr_time
             self.dt = a_dt
             for i in range(4):
-                enc = self.encoders[i]
-                windows[i].append(enc)
+                windows[i].append(self.encoders[i])
                 self.enc_speed[i] = self.central_difference_velocity(list(windows[i]), 1/30)
             time.sleep(max(1/30 - (time.perf_counter()-curr_time), 0)) 
             
@@ -957,7 +955,10 @@ class RP_A1(RPLidarA1):
     def threaded_read(self):
         try:
             while self.t:
-                self.latest = self.read()
+                try:
+                    self.latest = self.read()
+                except OSError:
+                    pass
         except RPLidarException as e:
             logger.error(f"[RPLidar]: {e} | {e.args}")
             interrupt_main()

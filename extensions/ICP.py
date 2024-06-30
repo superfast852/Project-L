@@ -74,14 +74,14 @@ if __name__ == "__main__":
     import numpy as np
     from extensions.tools import gen_atsushi, gen_sines
 
-    dev = 0.05
+    dev = 0.15
     tg_x_shift = 0
     n_pts = 1000
     translation, rotation = np.array([1, 1]), np.pi / 2
     for i in range(100):
 
-        #target, scan = gen_sines(n_pts, 0, 0, 3.14159265/2, np.array([2, 3]))
-        target, scan = gen_atsushi()
+        target, scan = gen_sines(n_pts, dev, tg_x_shift, rotation, translation)
+        #target, scan = gen_atsushi()
 
         st = perf_counter()
         t = iterative_closest_point(scan, target, 100, 0.001)

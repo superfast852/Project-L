@@ -51,5 +51,4 @@ while running:
     drive.drive(js[0], js[1], js[4], js[2])
     scan = lidar.getScan()
     scan_registry.append(scan)
-    odom = driver.computePoseChange()
-    pose = slam.update(*scan, odom)
+    pose = slam.update(*scan)
