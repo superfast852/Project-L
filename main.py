@@ -34,11 +34,13 @@ def kill():
 
 def update_map():
     global map_table, map
+    while not NetworkTables.isConnected():
+        sleep(1/5)
     while running:
         map_table.putRaw("map", map.toSlam())
+        map_table.putNumberArray("dpose", driver.pose)
         map_table.putNumberArray("pose", pose)
-        print("Updated map.")
-        sleep(1)
+        sleep(1/10)
 
 
 scan_registry = []

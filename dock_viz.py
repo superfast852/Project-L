@@ -14,7 +14,8 @@ def update():
     global map_table, map, pose
     while True:
         mapbytes = map_table.getRaw("map", bytearray([127]*800*800))
-        pose = map_table.getNumberArray("pose", (400, 400, 0))
+        pose = list(map_table.getNumberArray("pose", (400, 400, 0)))
+        pose[2] *= 3.14159265/180
         map.fromSlam(bytearray(mapbytes))
 
 

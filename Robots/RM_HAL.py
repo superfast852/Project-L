@@ -936,7 +936,7 @@ class RP_A1(RPLidarA1):
             self.lidar = rpl(port, baudrate, timeout)
             logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
         self.lidar.clean_input()
-        self.scanner = self.lidar.iter_scans(scan_type, False, 10)
+        self.scanner = self.lidar.iter_scans(scan_type, False, 100)
 
         next(self.scanner)
         self.rotation = rotation % 360
@@ -959,6 +959,10 @@ class RP_A1(RPLidarA1):
                     self.latest = self.read()
                 except OSError:
                     pass
+                except StopIteration:
+                    time.sleep(1/30)
+                    self.scanner = self.lidar.iter_scans('normal', False, 100)
+
         except RPLidarException as e:
             logger.error(f"[RPLidar]: {e} | {e.args}")
             interrupt_main()
