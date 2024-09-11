@@ -26,7 +26,6 @@ def kill():
     killsig = True
 
 
-a = driver.alpha
 controller.setTrigger("Back", kill)
 controller.setTrigger("Start", drive.switchDrive)
 controller.setTrigger("A", drive.brake)
