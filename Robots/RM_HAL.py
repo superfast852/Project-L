@@ -761,8 +761,10 @@ class Drive:  # TODO: Implement self.max properly
     def brake(self):  # TODO: This is a rough patch, we need to test.
         self.braking = 1
         driver.target_speeds = [0, 0, 0, 0]
+        driver.set_motor(-self.lf, -self.rf, -self.lb, -self.rb)
+        time.sleep(0.1)
         driver.set_motor(0, 0, 0, 0)
-        time.sleep(0.2)
+        time.sleep(1)
         self.braking = 0
 
     def smoothBrake(self, break_time=1):
