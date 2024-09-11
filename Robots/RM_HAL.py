@@ -678,7 +678,7 @@ class Drive:  # TODO: Implement self.max properly
 
     # Movement Functions
     def cartesian(self, x, y, speed=1, turn=0, notches = False):
-        theta = np.arctan2(y, x)
+        theta = np.arctan2(-x, y)
 
         if notches:
             notches = np.linspace(0, 2 * np.pi, 8, endpoint=False)
@@ -760,12 +760,9 @@ class Drive:  # TODO: Implement self.max properly
 
     def brake(self):  # TODO: This is a rough patch, we need to test.
         self.braking = 1
-        self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
         driver.target_speeds = [0, 0, 0, 0]
-        driver._setm(self.lf, self.rf, self.lb, self.rb)
+        driver.set_motor(0, 0, 0, 0)
         time.sleep(0.2)
-        self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
-        driver._setm(0, 0, 0, 0)
         self.braking = 0
 
     def smoothBrake(self, break_time=1):
