@@ -365,7 +365,7 @@ class Rosmaster(object):
         if value == 127:
             return 127
         else:
-            out = limit(value, -100, 100)
+            out = int(limit(value, -100, 100))
             return 256 + out if out < 0 else out
 
     # Start the thread that receives and processes data
