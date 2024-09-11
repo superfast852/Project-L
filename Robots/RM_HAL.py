@@ -762,9 +762,9 @@ class Drive:  # TODO: Implement self.max properly
         self.braking = 1
         driver.target_speeds = [0, 0, 0, 0]
         self.lf, self.rf, self.lb, self.rb = -self.lf, -self.rf, -self.lb, -self.rb
-        time.sleep(0.5)
+        time.sleep(0.2)
         self.lf, self.rf, self.lb, self.rb = 0, 0, 0, 0
-        time.sleep(1)
+        time.sleep(0.3)
         self.braking = 0
 
     def smoothBrake(self, break_time=1):
