@@ -744,13 +744,11 @@ class Drive:  # TODO: Implement self.max properly
     # Note: For simulation, override this class to calculate the robot's position based on the motors. Also ticks.
     def comms(self, update_freq=10):
         while self.thread_life:
-            if not self.braking:
-                driver.set_motor(round(self.lf*100), round(self.rf*100), round(self.lb*100), round(self.rb*100))
+            driver.set_motor(round(self.lf*100), round(self.rf*100), round(self.lb*100), round(self.rb*100))
             time.sleep(1/update_freq)
 
     def drive(self, x, y, power, turn):
         if self.braking == 1:
-            print("Braking!")
             return (0, 0, 0, 0)
         if self.mecanum:
             return self.cartesian(x, y, power, turn)
