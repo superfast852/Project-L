@@ -26,22 +26,11 @@ def kill():
     killsig = True
 
 
-def add_alpha(dir):
-    global a
-    a += 0.1*dir
-    print(a)
-    for filter in driver.filters:
-        filter.alpha = a
-    driver.alpha = a
-
-
 a = driver.alpha
 controller.setTrigger("Back", kill)
 controller.setTrigger("Start", drive.switchDrive)
 controller.setTrigger("A", drive.brake)
 controller.setTrigger("LB", lambda: driver.set_beep(100))
-controller.setTrigger("UD", lambda: add_alpha(1))
-controller.setTrigger("DD", lambda: add_alpha(-1))
 start = time()
 while True:
     try:
