@@ -11,6 +11,7 @@ from extensions.logs import logging
 from extensions.tools import line2dots
 from numba import njit, prange
 from simple_pid import PID
+from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -577,6 +578,9 @@ class RRT:
         return nodes[nearest_index]
 
 
+##### EXPERIMENTAL #####
+
+
 class PurePursuit:
     def __init__(self, path, lad, reach=10, Kp=1, Ki=0, Kd=0):
         self.lad = lad
@@ -601,6 +605,54 @@ class PurePursuit:
 
         angle = np.arctan2(self.target[1] - pose[1], self.target[0] - pose[0]) - pose[2]
         return self.pid(angle)
+
+
+class Clump:
+    def __init__(self, points, clump_id=None):
+        self.points = np.array(points)  # Points in the clump
+        self.id = clump_id
+
+    def center(self):
+        """Returns the geometric center of the clump."""
+        return np.mean(self.points, axis=0).astype(int)
+
+    def add_point(self, point):
+        """Adds a point to the clump."""
+        self.points = np.vstack([self.points, point])
+
+    def update(self, new_points):
+        """Updates the clump with new points."""
+        self.points = np.array(new_points)
+
+    def __sub__(self, other):
+        return self.center() - other.center()
+
+    def __repr__(self):
+        return f"Clump ID {self.id} with {len(self.points)} points, center at {self.center()}"
+
+
+class ClumpTracker:
+    def __init__(self, max_distance=50):
+        self.clumps = []  # the clumps found in the moment.
+        self.next_id = 0  # huh.
+        self.max_distance = max_distance  # Threshold distance to consider as the same clump
+
+    def track(self, new_clumps: Iterable[Clump]):
+        updated_clumps = []  # array to match clumps
+        centers = np.array([c.center() for c in self.clumps])
+        for new_clump in new_clumps:  # for every new clump
+            distances = np.linalg.norm(centers-new_clump.center(), axis=1)
+            idx = np.argmin(distances)
+            if distances[idx] <= self.max_distance:
+                self.clumps[idx].update(new_clump.points)
+                updated_clumps.append(self.clumps[idx])
+            else:  # If it couldn't find a match, build a new clump
+                new_clump.id = self.next_id
+                self.next_id += 1
+                updated_clumps.append(new_clump)
+
+        self.clumps = updated_clumps
+        return self.clumps
 
 
 if __name__ == '__main__':

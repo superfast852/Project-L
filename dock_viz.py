@@ -4,8 +4,8 @@ from threading import Thread
 from time import sleep
 
 map = Map(800)
+driver_map = Map(800)
 pose = (400, 400, 0)
-icp_pose = (0, 0, 0)
 driver_pose = (0, 0, 0)
 NetworkTables.initialize("orinnano.local")
 map_table = NetworkTables.getTable("map")
@@ -22,19 +22,20 @@ def update():
 
 
 def pose_update():
-    global pose, icp_pose, driver_pose
+    global pose, driver_pose
     while not NetworkTables.isConnected():
         pass
     while True:
-        pose = map_table.getNumberArray("pose", [None, None, None])
-        icp_pose = map_table.getNumberArray("icp_pose", [None, None, None])
-        driver_pose = map_table.getNumberArray("dpose", [None, None, None])
+        map.fromSlam(bytearray(map_table.getRaw("map", bytes([127]*800*800))))
+        pose = map_table.getNumberArray("pose", [0]*3)
+        driver_pose = map_table.getNumberArray("dpose", [0]*3)
         sleep(0.5)
 
 
 thread = Thread(target=pose_update, daemon=True)
 thread.start()
 while True:
-    #map.animate(pose=pose)
-    print(f"Pose Update:\n\t SLAM: {pose}\n\tICP: {icp_pose}\n\tDriver: {driver_pose}")
+    map.animate(pose=pose, show="slam")
+    driver_map.animate(pose=driver_pose, show="driver")
+    print(f"Pose Update:\n\t SLAM: {pose}\n\tDriver: {driver_pose}")
     sleep(0.5)

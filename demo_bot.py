@@ -46,10 +46,9 @@ start = time()
 while True:
     try:
         vals = controller.read()
-        drive.drive(vals[1], vals[0], vals[4], vals[2])
+        drive.drive(vals[0], vals[1], vals[4], vals[2])
         print([round(i, 3) for i in driver.enc_speed])
-        print(driver.encoders)
-        print(driver.pose)
+        drive.get_directions()
         if killsig:
             drive.brake()
             logger.info("Exited gracefully.")

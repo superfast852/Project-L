@@ -677,8 +677,8 @@ class Drive:  # TODO: Implement self.max properly
                             (1, -1, 1, -1), (-1, 1, -1, 1))  # RotateRight, RotateLeft
 
     # Movement Functions
-    def cartesian(self, x, y, speed=1, turn=0, notches = True):
-        theta = np.arctan2(y, -x)
+    def cartesian(self, x, y, speed=1, turn=0, notches = False):
+        theta = np.arctan2(y, x)
 
         if notches:
             notches = np.linspace(0, 2 * np.pi, 8, endpoint=False)
@@ -938,7 +938,7 @@ class RP_A1(RPLidarA1):
             self.lidar = rpl(port, baudrate, timeout)
             logger.info(f"{self.lidar.get_info(), self.lidar.get_health()}")
         self.lidar.clean_input()
-        self.scanner = self.lidar.iter_scans(scan_type, False, 100)
+        self.scanner = self.lidar.iter_scans(scan_type, False, 5)
 
         next(self.scanner)
         self.rotation = rotation % 360
@@ -998,7 +998,7 @@ class RP_A1(RPLidarA1):
 
     def readCartesian(self):
         distance, angle = np.array(self.getScan())
-        angle = np.deg2rad(angle)
+        angle = np.deg2rad(360-angle)
         return np.array([distance*np.cos(angle), distance*np.sin(angle)]).T
 
     def autoStopCollision(self, collision_threshold=300):

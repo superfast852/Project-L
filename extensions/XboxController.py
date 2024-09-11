@@ -68,13 +68,17 @@ class XboxController(object):
             raise OSError("No controller found")
 
     def read(self):  # return the buttons/triggers that you care about in this methode
+        '''
+        Reads select controller inputs and returns them in a list.
+        :return: LJoyX/Y, RJoyX/Y, RT, A, Back, Start
+        '''
         reads = [self.LJoyX, self.LJoyY, self.RJoyX, self.RJoyY,
                  self.RT, self.A, self.Back, self.Start]
 
-        return [self._clean(i) for i in reads]
+        return reads
 
     def _clean(self, x):  # Filter out the inputs.
-        return round(x, 3) if not self.deadzone > x > -self.deadzone else 0
+        return round(x, 3) if abs(x) > self.deadzone else 0
 
     def _monitor_controller(self):
         from evdev import ecodes
@@ -111,13 +115,13 @@ class XboxController(object):
                     elif event.code == 5:
                         self.RJoyY = self._clean(-(event.value / XboxController.MAX_JOY_VAL) + 1)  # normalize between -1 and 1
                     elif event.code == 2:
-                        self.RJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL) - 1  # normalize between -1 and 1
+                        self.RJoyX = self._clean(event.value / XboxController.MAX_JOY_VAL - 1)  # normalize between -1 and 1
                     elif event.code == 10:
                         self.LT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
                     elif event.code == 9:
                         self.RT = self._clean(event.value / XboxController.MAX_TRIG_VAL)  # normalize between 0 and 1
-                        # DPad
 
+                    # DPad
                     elif event.code == 17:
                         self.UD = max(0, -event.value)
                         self.DD = max(0, event.value)
@@ -224,6 +228,11 @@ if __name__ == "__main__":
 
     controller.setTrigger("A", toCall, message="This is a Rising call.", btn="A")
     controller.setTrigger("A", toCall, message="This is a Falling call.", btn="A", rising=False)
+    controller.setTrigger("LD", toCall, message="This is a Rising call.", btn="LD")
+    controller.setTrigger("LD", toCall, message="This is a Falling call.", btn="LD", rising=False)
+    controller.setTrigger("RD", toCall, message="This is a Rising call.", btn="RD")
+    controller.setTrigger("RD", toCall, message="This is a Falling call.", btn="RD", rising=False)
+
     while True:
-        print(controller.read())
+        #print(controller.read())
         sleep(0.5)
