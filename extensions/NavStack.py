@@ -21,10 +21,11 @@ def pymap(n, func):
 
 class Map:
     paths = []
-
+    # Free: 0
+    # Occupied: 1
+    # Unknown: -1
     def __init__(self, map="random", map_meters=35):
         # The IR Map is just the RRT Map format.
-        self.nb_transient(np.array(bytearray([127]*4))).astype(int)
         self.map_meters = None
 
         if isinstance(map, str):
@@ -76,7 +77,7 @@ class Map:
             self.map_meters = map_meters
         self.m2px = self.map.shape[0] / self.map_meters
         self.px2m = 1 / self.m2px
-        self.collision_free((0, 0), (0, 0))
+
 
     def update(self, map):
         self.__init__(map)
@@ -121,7 +122,7 @@ class Map:
             del datetime
         with open(name, "wb") as f:
             dump(self.map, f)
-        logging.info(f"[NavStack/Map] Saved Map as {name}!")
+        logger.info(f"[NavStack/Map] Saved Map as {name}!")
 
     def isValidPoint(self, point, unknown=False):
         return self.map[point[1], point[0]] == 0 if not unknown else self.map[point[1], point[0]] != 1
@@ -186,7 +187,7 @@ class Map:
         except TypeError:  # If we could not convert to an integer,
             [self.paths.append(i) for i in route]  # It means that route[0][0][0] was an array.
         except IndexError:  # If the probe was not successful, it's invalid.
-            logging.error("[NavStack/Map] Empty or Invalid path provided.")
+            logger.error("[NavStack/Map] Empty or Invalid path provided.")
         return
 
     def animate(self, img=None, pose=None, drawLines=True, arrowLength=20, thickness=5, show="Map"):
@@ -224,6 +225,12 @@ class Map:
     def collision_free(self, a, b) -> bool:
         return self.cf_wrap(self.map, (a[0], a[1]), (b[0], b[1]))
 
+    def expand(self, size):
+        self.map = np.pad(self.map, size, "constant", constant_values=-1)
+        self.map_center = (self.map.shape[0] // 2,) * 2  # These are all square maps, so no need to worry.
+        self.m2px = self.map.shape[0] / self.map_meters
+        self.px2m = 1 / self.m2px
+
     @staticmethod
     @njit
     def cf_wrap(map, a, b) -> bool:
@@ -259,6 +266,9 @@ class Map:
                 error += deltax
         return True
 
+
+Map.nb_transient(np.array(bytearray([127]*4))).astype(int)  # just compile it
+Map.cf_wrap(np.zeros((5, 5)), (0, 0), (1, 1))
 
 class SLAM:
     def __init__(self, lidar=None, map_handle=None, update_map=1):
@@ -662,7 +672,6 @@ if __name__ == '__main__':
     s = perf_counter()
     map.fromSlam(nb)
     print(f"Before: {1/(perf_counter()-s)}")
-    exit()
     try:
         map = Map("../Resources/TransientMap_test_scans.pkl")
     except FileNotFoundError:
@@ -670,7 +679,7 @@ if __name__ == '__main__':
     map = Map()
     rrt = RRT(map, inflate=8.5)
     inflated = rrt.gen_binary_cost()
-    img = map.tocv2(invert=True, img=inflated)
+    img = map.tocv2(invert=True)
     while cv2.waitKey(1000) != ord('q'):
         map.paths = []
         start = map.getValidPoint()

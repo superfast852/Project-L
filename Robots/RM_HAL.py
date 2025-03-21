@@ -951,6 +951,7 @@ class RP_A1(RPLidarA1):
             self.latest = [[0], [0]]
             self.scans = Thread(target=self.threaded_read, daemon=True)
             self.scans.start()
+        register(self.exit)
         # last_scan = self.read()  # Return this for when we must clear the buffer if we don't read fast enough.
 
     def threaded_read(self):
@@ -1077,6 +1078,8 @@ class RP_A1(RPLidarA1):
 # One easy change is adding x += x_change * cos(theta) and y += y_change * sin(theta) to the kinematics.
 # This basically makes the x and y axis change according to the current orientation of the bot.
 # Actual testing is required.
+# hey me in the past. THIS IS THE RIGHT WAY!!! USE A MOTION MODEL! A TRANSFORM MATRIX! YOU'RE ON THE RIGHT PATH!!!!
+
 class MecanumKinematics:  # units in centimeters.
     # lx, ly = 15.5, 8.5
     # lt = 24

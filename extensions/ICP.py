@@ -80,7 +80,7 @@ if __name__ == "__main__":
     translation, rotation = np.array([1, 1]), np.pi / 2
     for i in range(100):
 
-        #target, scan = gen_sines(n_pts, dev, tg_x_shift, rotation, translation)
+        # target, scan = gen_sines(n_pts, dev, tg_x_shift, rotation, translation)
         target, scan = gen_atsushi()
 
         st = perf_counter()
